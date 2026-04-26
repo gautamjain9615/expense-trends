@@ -230,6 +230,14 @@
 
   .tx-table-wrap { overflow-x: auto; }
 
+  .filter-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
+  .filter-row input[type="search"], .filter-row select {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 10px; border-radius: 6px; font-size: 13px;
+  }
+  .filter-row input[type="search"] { flex: 1; min-width: 180px; }
+  .filter-row .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+
   /* ERRORS */
   .errors { background: rgba(255,122,122,0.08); border: 1px solid var(--bad); color: var(--bad);
             padding: 8px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
@@ -292,6 +300,18 @@
   <!-- RECENT TRANSACTIONS -->
   <section class="card">
     <h2>Recent transactions <span class="h-sub" id="txSub"></span></h2>
+    <div class="filter-row">
+      <input type="search" id="txSearch" placeholder="Search merchant, note, category, raw text...">
+      <select id="txCategory"><option value="">All categories</option></select>
+      <span class="lbl">show</span>
+      <select id="txLimit">
+        <option value="25">25</option>
+        <option value="50" selected>50</option>
+        <option value="100">100</option>
+        <option value="250">250</option>
+        <option value="0">All</option>
+      </select>
+    </div>
     <div class="tx-table-wrap">
       <table id="txTable">
         <thead>
@@ -382,6 +402,9 @@ let activeFilter = 'all';
 let selectedDayKey = null;     // 'YYYY-MM-DD'
 let merchantSort = 'total';
 let merchantSortDir = 'desc';
+let txLimit = 50;
+let txSearch = '';
+let txCategory = '';
 let charts = {};
 
 // ─── utilities ────────────────────────────────────────────────────────
@@ -1017,16 +1040,44 @@ function renderCumulative(entries) {
 }
 
 // ─── TRANSACTIONS TABLE ───────────────────────────────────────────────
+function populateTxCategoryFilter() {
+  const cats = [...new Set(allEntries.map(e => e.category).filter(Boolean))].sort();
+  const sel = document.getElementById('txCategory');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">All categories</option>' + cats.map(c => `<option ${c === current ? 'selected' : ''}>${escapeHtml(c)}</option>`).join('');
+  sel.value = txCategory;
+}
+
 function renderTransactionsTable(entries) {
-  const recent = entries.slice(0, 50);
+  populateTxCategoryFilter();
+
+  // Apply local filters (on top of the global payment-method chip filter already in `entries`)
+  let filtered = entries;
+  if (txCategory) filtered = filtered.filter(e => e.category === txCategory);
+  if (txSearch) {
+    const q = txSearch.toLowerCase();
+    filtered = filtered.filter(e => {
+      const blob = `${e.merchant || ''} ${e.note || ''} ${e.category || ''} ${e.payment_method || ''} ${e.raw_text || ''}`.toLowerCase();
+      return blob.includes(q);
+    });
+  }
+
+  const limit = txLimit > 0 ? txLimit : filtered.length;
+  const shown = filtered.slice(0, limit);
   const tbody = document.querySelector('#txTable tbody');
-  if (!recent.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">No transactions.</td></tr>';
-    document.getElementById('txSub').textContent = '';
+
+  if (!shown.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">No matching transactions.</td></tr>';
+    document.getElementById('txSub').textContent = filtered.length === 0 ? 'no matches' : '';
     return;
   }
-  document.getElementById('txSub').textContent = `showing latest ${recent.length} of ${entries.length}`;
-  tbody.innerHTML = recent.map((e, i) => `
+
+  const sub = filtered.length === entries.length
+    ? `showing ${shown.length} of ${entries.length}`
+    : `showing ${shown.length} of ${filtered.length} matched (${entries.length} total)`;
+  document.getElementById('txSub').textContent = sub;
+
+  tbody.innerHTML = shown.map((e, i) => `
     <tr class="tx-row" data-idx="${i}">
       <td class="muted">${escapeHtml(fmtDateTime(e._date))}</td>
       <td>${escapeHtml(e.merchant || '')}</td>
@@ -1047,7 +1098,7 @@ function renderTransactionsTable(entries) {
         next.remove();
         return;
       }
-      const e = recent[idx];
+      const e = shown[idx];
       const raw = document.createElement('tr');
       raw.className = 'raw-row';
       raw.innerHTML = `<td colspan="7"><strong>raw:</strong> ${escapeHtml(e.raw_text || '(empty)')}</td>`;
@@ -1055,6 +1106,20 @@ function renderTransactionsTable(entries) {
     });
   });
 }
+
+// Filter event listeners
+document.getElementById('txSearch').addEventListener('input', (e) => {
+  txSearch = e.target.value.trim();
+  renderTransactionsTable(getFilteredEntries());
+});
+document.getElementById('txCategory').addEventListener('change', (e) => {
+  txCategory = e.target.value;
+  renderTransactionsTable(getFilteredEntries());
+});
+document.getElementById('txLimit').addEventListener('change', (e) => {
+  txLimit = parseInt(e.target.value, 10);
+  renderTransactionsTable(getFilteredEntries());
+});
 
 // ─── MERCHANT FREQUENCY ───────────────────────────────────────────────
 function renderMerchants(entries) {
