@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Expense Trends</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
 <style>
   :root {
     --bg: #0f1115;
@@ -173,6 +174,26 @@
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 const PALETTE = ['#5ea6ff', '#ff9e4f', '#6bd58a', '#c084fc', '#ff7a7a', '#ffd166', '#4ecdc4', '#a8b3c4'];
 
+function compactINR(v) {
+  if (v >= 100000) return '₹' + (v / 100000).toFixed(1) + 'L';
+  if (v >= 1000) return '₹' + (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'k';
+  return '₹' + Math.round(v);
+}
+
+function doughnutLabels() {
+  return {
+    color: '#fff',
+    font: { weight: '600', size: 11 },
+    textStrokeColor: 'rgba(0,0,0,0.45)',
+    textStrokeWidth: 3,
+    formatter: (v, ctx) => {
+      const total = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
+      // Hide labels for tiny slices to avoid overlap.
+      return total > 0 && (v / total) >= 0.04 ? compactINR(v) : '';
+    },
+  };
+}
+
 let allEntries = [];
 let charts = {};
 
@@ -326,7 +347,13 @@ function renderCharts() {
   charts.cat = new Chart(document.getElementById('categoryChart'), {
     type: 'doughnut',
     data: { labels: catLabels, datasets: [{ data: catData, backgroundColor: PALETTE, borderWidth: 0 }] },
-    options: { plugins: { legend: { position: 'right', labels: { color: getCss('--text') } } }, cutout: '60%' }
+    options: {
+      plugins: {
+        legend: { position: 'right', labels: { color: getCss('--text') } },
+        datalabels: doughnutLabels(),
+      },
+      cutout: '60%',
+    },
   });
 
   // Daily bar chart, last 30 days
@@ -342,7 +369,17 @@ function renderCharts() {
     type: 'bar',
     data: { labels: days, datasets: [{ data: totals, backgroundColor: getCss('--accent'), borderRadius: 3 }] },
     options: {
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => INR.format(ctx.parsed.y) } } },
+      layout: { padding: { top: 20 } },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => INR.format(ctx.parsed.y) } },
+        datalabels: {
+          anchor: 'end', align: 'end', offset: 2,
+          color: getCss('--text'),
+          font: { size: 9, weight: '500' },
+          formatter: (v) => v > 0 ? compactINR(v) : '',
+        },
+      },
       scales: {
         x: { ticks: { color: getCss('--muted'), maxRotation: 0, autoSkip: true, maxTicksLimit: 8 }, grid: { display: false } },
         y: { ticks: { color: getCss('--muted'), callback: (v) => '₹' + v }, grid: { color: getCss('--border') } }
@@ -358,7 +395,13 @@ function renderCharts() {
   charts.pmt = new Chart(document.getElementById('paymentChart'), {
     type: 'doughnut',
     data: { labels: pmtLabels, datasets: [{ data: pmtData, backgroundColor: PALETTE, borderWidth: 0 }] },
-    options: { plugins: { legend: { position: 'right', labels: { color: getCss('--text') } } }, cutout: '60%' }
+    options: {
+      plugins: {
+        legend: { position: 'right', labels: { color: getCss('--text') } },
+        datalabels: doughnutLabels(),
+      },
+      cutout: '60%',
+    },
   });
 }
 
