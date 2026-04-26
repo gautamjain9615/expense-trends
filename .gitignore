@@ -5,3 +5,12 @@
 !package.json
 CLAUDE.md
 .claude/
+editor/
+
+# Personal data — never commit
+Shortcuts_Data/
+Shortcuts_Data/logs/
+Shortcuts_Data/backups/
+**/expenses*.txt
+**/expenses*.jsonl
+**/expenses*.json
