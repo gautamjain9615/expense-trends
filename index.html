@@ -171,6 +171,8 @@
 </main>
 
 <script>
+if (typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
+
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 const PALETTE = ['#5ea6ff', '#ff9e4f', '#6bd58a', '#c084fc', '#ff7a7a', '#ffd166', '#4ecdc4', '#a8b3c4'];
 
