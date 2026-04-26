@@ -106,7 +106,7 @@
   <h1>Expense Trends</h1>
   <div class="picker">
     <span class="filename" id="filename"></span>
-    <label for="fileInput">Load expenses.txt</label>
+    <label for="fileInput" id="pickerLabel">Load expenses.txt</label>
     <input type="file" id="fileInput" accept=".txt,.jsonl,.json,application/json">
   </div>
 </header>
@@ -221,6 +221,14 @@ function loadData(text) {
   });
   entries.sort((a, b) => b._date - a._date);
   allEntries = entries;
+
+  if (entries.length > 0) {
+    try {
+      localStorage.setItem('expense-data', text);
+      localStorage.setItem('expense-data-ts', new Date().toISOString());
+      updateLastLoaded();
+    } catch (e) { /* quota exceeded — fall back to in-memory only */ }
+  }
 
   const errBox = document.getElementById('errors');
   if (errors.length) {
@@ -431,6 +439,30 @@ function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 function getCss(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+function updateLastLoaded() {
+  const ts = localStorage.getItem('expense-data-ts');
+  if (!ts) return;
+  const date = new Date(ts);
+  const mins = Math.floor((Date.now() - date.getTime()) / 60000);
+  let label;
+  if (mins < 1) label = 'just now';
+  else if (mins < 60) label = `${mins}m ago`;
+  else if (mins < 1440) label = `${Math.floor(mins / 60)}h ago`;
+  else label = `${Math.floor(mins / 1440)}d ago`;
+  document.getElementById('filename').textContent = `Loaded ${label}`;
+  document.getElementById('pickerLabel').textContent = 'Refresh';
+}
+
+// Auto-load from localStorage on page open
+(function initFromCache() {
+  try {
+    const cached = localStorage.getItem('expense-data');
+    if (cached && cached.length > 0) {
+      loadData(cached);
+    }
+  } catch (e) { /* cache unavailable — user will pick manually */ }
+})();
 </script>
 
 </body>
