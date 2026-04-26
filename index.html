@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Expense Trends</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #181b22;
+    --border: #2a2f3a;
+    --text: #e6e9ef;
+    --muted: #8b93a3;
+    --accent: #5ea6ff;
+    --good: #6bd58a;
+    --bad: #ff7a7a;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f7f8fa; --panel: #ffffff; --border: #e6e8ef;
+      --text: #1a1d23; --muted: #6b7280; --accent: #2b6cff;
+      --good: #1f9d55; --bad: #c0392b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    background: var(--bg); color: var(--text);
+    max-width: 1200px; margin: 0 auto;
+  }
+  header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 24px; font-weight: 600; }
+  h2 { margin: 0 0 12px; font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .picker { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+  .picker label {
+    padding: 8px 14px; background: var(--accent); color: white; border-radius: 8px;
+    cursor: pointer; font-size: 14px; font-weight: 500;
+  }
+  .picker label:hover { opacity: 0.9; }
+  .picker input { display: none; }
+  .picker .filename { font-size: 13px; color: var(--muted); }
+
+  #empty { text-align: center; padding: 80px 20px; color: var(--muted); }
+  #empty p { margin: 8px 0; }
+  #empty code { background: var(--panel); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+
+  main { display: none; }
+  main.loaded { display: block; }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  .stat {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px;
+  }
+  .stat .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat .value { font-size: 24px; font-weight: 600; margin-top: 4px; }
+  .stat .delta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .stat .delta.up { color: var(--bad); }
+  .stat .delta.down { color: var(--good); }
+
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  @media (max-width: 800px) { .row { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px;
+  }
+  .card canvas { max-height: 280px; }
+
+  .merchants { list-style: none; padding: 0; margin: 0; }
+  .merchants li {
+    display: flex; justify-content: space-between; padding: 8px 0;
+    border-bottom: 1px solid var(--border); font-size: 14px;
+  }
+  .merchants li:last-child { border-bottom: 0; }
+  .merchants .name { display: flex; gap: 8px; align-items: center; }
+  .merchants .count { color: var(--muted); font-size: 12px; }
+
+  .filter-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+  .filter-row input, .filter-row select {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 10px; border-radius: 6px; font-size: 13px;
+  }
+  .filter-row input { flex: 1; min-width: 180px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 10px 8px; font-weight: 600; color: var(--muted);
+       text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px;
+       border-bottom: 1px solid var(--border); }
+  td { padding: 10px 8px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: 0; }
+  td.amount { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+  td.muted { color: var(--muted); font-size: 12px; }
+  .pill { display: inline-block; padding: 2px 8px; background: var(--bg); border-radius: 12px;
+          font-size: 11px; color: var(--muted); }
+
+  .errors { background: rgba(255,122,122,0.08); border: 1px solid var(--bad); color: var(--bad);
+            padding: 8px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Expense Trends</h1>
+  <div class="picker">
+    <span class="filename" id="filename"></span>
+    <label for="fileInput">Load expenses.txt</label>
+    <input type="file" id="fileInput" accept=".txt,.jsonl,.json,application/json">
+  </div>
+</header>
+
+<div id="empty">
+  <p>Pick the file at:</p>
+  <p><code>iCloud Drive › Shortcuts_Data › logs › expenses.txt</code></p>
+</div>
+
+<div id="errors" class="errors" style="display:none"></div>
+
+<main id="main">
+  <section class="stats" id="stats"></section>
+
+  <div class="row">
+    <div class="card">
+      <h2>By Category (This Month)</h2>
+      <canvas id="categoryChart"></canvas>
+    </div>
+    <div class="card">
+      <h2>Daily Spend (Last 30 Days)</h2>
+      <canvas id="dailyChart"></canvas>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <h2>Top Merchants (This Month)</h2>
+      <ol class="merchants" id="topMerchants"></ol>
+    </div>
+    <div class="card">
+      <h2>Spend by Payment Method (This Month)</h2>
+      <canvas id="paymentChart"></canvas>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Transactions</h2>
+    <div class="filter-row">
+      <input type="search" id="searchBox" placeholder="Search merchant, note, category, payment method...">
+      <select id="rangeFilter">
+        <option value="month">This Month</option>
+        <option value="last-month">Last Month</option>
+        <option value="week">This Week</option>
+        <option value="ytd">Year to Date</option>
+        <option value="all" selected>All Time</option>
+      </select>
+      <select id="catFilter">
+        <option value="">All Categories</option>
+      </select>
+    </div>
+    <div style="overflow-x:auto">
+      <table id="txTable">
+        <thead>
+          <tr><th>Date</th><th>Merchant</th><th>Category</th><th>Pmt</th><th style="text-align:right">Amount</th><th>Note</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<script>
+const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+const PALETTE = ['#5ea6ff', '#ff9e4f', '#6bd58a', '#c084fc', '#ff7a7a', '#ffd166', '#4ecdc4', '#a8b3c4'];
+
+let allEntries = [];
+let charts = {};
+
+function showError(msg) {
+  const box = document.getElementById('errors');
+  box.style.display = 'block';
+  box.textContent = msg;
+}
+document.getElementById('fileInput').addEventListener('change', async (e) => {
+  try {
+    const file = e.target.files[0];
+    if (!file) { showError('No file selected.'); return; }
+    document.getElementById('filename').textContent = `${file.name} (${file.size} bytes)`;
+    let text;
+    if (file.text) {
+      text = await file.text();
+    } else {
+      text = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(r.result);
+        r.onerror = () => reject(r.error);
+        r.readAsText(file);
+      });
+    }
+    if (!text || text.length === 0) { showError(`File read but empty (${file.size} bytes).`); return; }
+    loadData(text);
+  } catch (err) {
+    showError(`Load failed: ${err.message || err}`);
+  }
+});
+
+function loadData(text) {
+  const errors = [];
+  const entries = [];
+  text.split(/\r?\n/).forEach((line, i) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    try {
+      const obj = JSON.parse(trimmed);
+      if (typeof obj.amount === 'string') obj.amount = parseFloat(obj.amount);
+      obj._date = new Date(obj.ts);
+      entries.push(obj);
+    } catch (err) {
+      errors.push(`Line ${i + 1}: ${err.message}`);
+    }
+  });
+  entries.sort((a, b) => b._date - a._date);
+  allEntries = entries;
+
+  const errBox = document.getElementById('errors');
+  if (errors.length) {
+    errBox.style.display = 'block';
+    errBox.textContent = `${errors.length} line(s) skipped: ` + errors.slice(0, 3).join(' · ');
+  } else {
+    errBox.style.display = 'none';
+  }
+
+  if (entries.length === 0) {
+    document.getElementById('empty').textContent = 'No entries found in the file.';
+    return;
+  }
+
+  document.getElementById('empty').style.display = 'none';
+  document.getElementById('main').classList.add('loaded');
+
+  populateCategoryFilter();
+  renderStats();
+  renderCharts();
+  renderMerchants();
+  renderTable();
+}
+
+function startOfDay(d) { const x = new Date(d); x.setHours(0,0,0,0); return x; }
+function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+function startOfWeek(d) {
+  const x = startOfDay(d);
+  const day = x.getDay() === 0 ? 6 : x.getDay() - 1; // week starts Monday
+  x.setDate(x.getDate() - day);
+  return x;
+}
+function startOfYear(d) { return new Date(d.getFullYear(), 0, 1); }
+function fmtDate(d) {
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+}
+function fmtDateTime(d) {
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) +
+    ' · ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+}
+
+function sumIn(start, end) {
+  return allEntries
+    .filter(e => e._date >= start && (!end || e._date < end))
+    .reduce((s, e) => s + (e.amount || 0), 0);
+}
+
+function renderStats() {
+  const now = new Date();
+  const today = startOfDay(now);
+  const thisWeek = startOfWeek(now);
+  const thisMonth = startOfMonth(now);
+  const lastMonth = new Date(thisMonth.getFullYear(), thisMonth.getMonth() - 1, 1);
+  const ytd = startOfYear(now);
+
+  const todayTotal = sumIn(today);
+  const weekTotal = sumIn(thisWeek);
+  const monthTotal = sumIn(thisMonth);
+  const lastMonthTotal = sumIn(lastMonth, thisMonth);
+  const ytdTotal = sumIn(ytd);
+
+  const monthDelta = lastMonthTotal > 0 ? ((monthTotal - lastMonthTotal) / lastMonthTotal) * 100 : 0;
+  const deltaClass = monthDelta > 0 ? 'up' : 'down';
+  const deltaSign = monthDelta > 0 ? '↑' : '↓';
+  const deltaStr = lastMonthTotal === 0
+    ? `vs last month: —`
+    : `${deltaSign} ${Math.abs(monthDelta).toFixed(0)}% vs last month`;
+
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><div class="label">Today</div><div class="value">${INR.format(todayTotal)}</div></div>
+    <div class="stat"><div class="label">This Week</div><div class="value">${INR.format(weekTotal)}</div></div>
+    <div class="stat">
+      <div class="label">This Month</div>
+      <div class="value">${INR.format(monthTotal)}</div>
+      <div class="delta ${deltaClass}">${deltaStr}</div>
+    </div>
+    <div class="stat"><div class="label">Last Month</div><div class="value">${INR.format(lastMonthTotal)}</div></div>
+    <div class="stat"><div class="label">Year to Date</div><div class="value">${INR.format(ytdTotal)}</div></div>
+  `;
+}
+
+function renderCharts() {
+  Object.values(charts).forEach(c => c?.destroy?.());
+  charts = {};
+
+  const now = new Date();
+  const thisMonth = startOfMonth(now);
+  const monthEntries = allEntries.filter(e => e._date >= thisMonth);
+
+  // Category breakdown
+  const byCat = {};
+  monthEntries.forEach(e => { byCat[e.category || 'Misc'] = (byCat[e.category || 'Misc'] || 0) + (e.amount || 0); });
+  const catLabels = Object.keys(byCat);
+  const catData = catLabels.map(k => byCat[k]);
+  charts.cat = new Chart(document.getElementById('categoryChart'), {
+    type: 'doughnut',
+    data: { labels: catLabels, datasets: [{ data: catData, backgroundColor: PALETTE, borderWidth: 0 }] },
+    options: { plugins: { legend: { position: 'right', labels: { color: getCss('--text') } } }, cutout: '60%' }
+  });
+
+  // Daily bar chart, last 30 days
+  const days = [];
+  const totals = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = startOfDay(new Date(now.getTime() - i * 86400000));
+    const next = new Date(d.getTime() + 86400000);
+    days.push(fmtDate(d));
+    totals.push(sumIn(d, next));
+  }
+  charts.daily = new Chart(document.getElementById('dailyChart'), {
+    type: 'bar',
+    data: { labels: days, datasets: [{ data: totals, backgroundColor: getCss('--accent'), borderRadius: 3 }] },
+    options: {
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => INR.format(ctx.parsed.y) } } },
+      scales: {
+        x: { ticks: { color: getCss('--muted'), maxRotation: 0, autoSkip: true, maxTicksLimit: 8 }, grid: { display: false } },
+        y: { ticks: { color: getCss('--muted'), callback: (v) => '₹' + v }, grid: { color: getCss('--border') } }
+      }
+    }
+  });
+
+  // Payment method breakdown
+  const byPmt = {};
+  monthEntries.forEach(e => { byPmt[e.payment_method || 'unknown'] = (byPmt[e.payment_method || 'unknown'] || 0) + (e.amount || 0); });
+  const pmtLabels = Object.keys(byPmt);
+  const pmtData = pmtLabels.map(k => byPmt[k]);
+  charts.pmt = new Chart(document.getElementById('paymentChart'), {
+    type: 'doughnut',
+    data: { labels: pmtLabels, datasets: [{ data: pmtData, backgroundColor: PALETTE, borderWidth: 0 }] },
+    options: { plugins: { legend: { position: 'right', labels: { color: getCss('--text') } } }, cutout: '60%' }
+  });
+}
+
+function renderMerchants() {
+  const thisMonth = startOfMonth(new Date());
+  const map = {};
+  allEntries.filter(e => e._date >= thisMonth).forEach(e => {
+    const k = (e.merchant || 'unknown').toLowerCase();
+    if (!map[k]) map[k] = { name: e.merchant, total: 0, count: 0 };
+    map[k].total += e.amount || 0;
+    map[k].count += 1;
+  });
+  const top = Object.values(map).sort((a, b) => b.total - a.total).slice(0, 10);
+  document.getElementById('topMerchants').innerHTML = top.length === 0
+    ? '<li><span class="name">No entries this month</span></li>'
+    : top.map(m => `
+      <li>
+        <span class="name">${escapeHtml(m.name)} <span class="count">× ${m.count}</span></span>
+        <span>${INR.format(m.total)}</span>
+      </li>
+    `).join('');
+}
+
+function populateCategoryFilter() {
+  const cats = [...new Set(allEntries.map(e => e.category).filter(Boolean))].sort();
+  const sel = document.getElementById('catFilter');
+  sel.innerHTML = '<option value="">All Categories</option>' + cats.map(c => `<option>${escapeHtml(c)}</option>`).join('');
+}
+
+function renderTable() {
+  const q = document.getElementById('searchBox').value.trim().toLowerCase();
+  const range = document.getElementById('rangeFilter').value;
+  const cat = document.getElementById('catFilter').value;
+
+  const now = new Date();
+  let start, end;
+  if (range === 'month') start = startOfMonth(now);
+  else if (range === 'last-month') { start = new Date(now.getFullYear(), now.getMonth() - 1, 1); end = startOfMonth(now); }
+  else if (range === 'week') start = startOfWeek(now);
+  else if (range === 'ytd') start = startOfYear(now);
+
+  let rows = allEntries.filter(e => {
+    if (start && e._date < start) return false;
+    if (end && e._date >= end) return false;
+    if (cat && e.category !== cat) return false;
+    if (q) {
+      const blob = `${e.merchant || ''} ${e.note || ''} ${e.category || ''} ${e.payment_method || ''}`.toLowerCase();
+      if (!blob.includes(q)) return false;
+    }
+    return true;
+  });
+
+  const total = rows.reduce((s, e) => s + (e.amount || 0), 0);
+
+  const body = document.querySelector('#txTable tbody');
+  body.innerHTML = rows.length === 0
+    ? `<tr><td colspan="6" class="muted" style="text-align:center;padding:24px">No transactions match.</td></tr>`
+    : rows.map(e => `
+      <tr>
+        <td class="muted">${fmtDateTime(e._date)}</td>
+        <td>${escapeHtml(e.merchant || '')}</td>
+        <td><span class="pill">${escapeHtml(e.category || '')}</span></td>
+        <td class="muted">${escapeHtml(e.payment_method || '')}</td>
+        <td class="amount">${INR.format(e.amount || 0)}</td>
+        <td class="muted">${escapeHtml(e.note || '')}</td>
+      </tr>
+    `).join('') + `
+      <tr><td colspan="4" style="text-align:right;font-weight:600">Filtered total</td>
+          <td class="amount" style="font-weight:600">${INR.format(total)}</td><td></td></tr>
+    `;
+}
+
+document.getElementById('searchBox').addEventListener('input', renderTable);
+document.getElementById('rangeFilter').addEventListener('change', renderTable);
+document.getElementById('catFilter').addEventListener('change', renderTable);
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function getCss(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+</script>
+
+</body>
+</html>
