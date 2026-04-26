@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Transactions · Expense Trends</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #181b22; --panel-2: #1f232c; --border: #2a2f3a;
+    --text: #e6e9ef; --muted: #8b93a3; --accent: #5ea6ff; --accent-soft: rgba(94,166,255,0.15);
+    --good: #6bd58a; --bad: #ff7a7a; --warn: #ffd166;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f7f8fa; --panel: #ffffff; --panel-2: #f1f3f7; --border: #e6e8ef;
+      --text: #1a1d23; --muted: #6b7280; --accent: #2b6cff; --accent-soft: rgba(43,108,255,0.10);
+      --good: #1f9d55; --bad: #c0392b; --warn: #b7791f;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    background: var(--bg); color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 20px; }
+
+  /* HEADER */
+  header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+  .brand { font-size: 18px; font-weight: 600; }
+  nav { display: flex; gap: 4px; }
+  nav a {
+    padding: 6px 12px; border-radius: 7px; font-size: 13px; font-weight: 500;
+    text-decoration: none; color: var(--muted);
+  }
+  nav a.active { background: var(--accent-soft); color: var(--accent); }
+  nav a.disabled { color: var(--muted); opacity: 0.45; cursor: not-allowed; }
+
+  .header-spacer { flex: 1; }
+  .picker { display: flex; align-items: center; gap: 10px; }
+  .picker .filename { font-size: 12px; color: var(--muted); }
+  .picker label {
+    padding: 7px 12px; background: var(--accent); color: white; border-radius: 7px;
+    cursor: pointer; font-size: 13px; font-weight: 500;
+  }
+  .picker label:hover { opacity: 0.9; }
+  .picker input { display: none; }
+
+  /* EMPTY */
+  #empty { text-align: center; padding: 80px 20px; color: var(--muted); }
+  #empty p { margin: 8px 0; }
+  #empty code { background: var(--panel); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+
+  main { display: none; }
+  main.loaded { display: block; }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 16px; margin-bottom: 12px;
+  }
+
+  /* FILTER BAR */
+  .filter-bar {
+    display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px;
+  }
+  .filter-bar input[type="search"], .filter-bar input[type="number"], .filter-bar select {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 7px 10px; border-radius: 7px; font-size: 13px;
+  }
+  .filter-bar input[type="search"] { flex: 1; min-width: 200px; }
+  .filter-bar input[type="number"] { width: 90px; }
+  .filter-bar .group { display: flex; align-items: center; gap: 4px; }
+  .filter-bar .group .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+
+  /* CHIP rows */
+  .chip-row { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+  .chip-row .lbl-chip { font-size: 11px; color: var(--muted); padding: 4px 0; margin-right: 4px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; align-self: center; }
+  .filter-chip {
+    padding: 4px 11px; background: var(--panel-2); border: 1px solid var(--border);
+    border-radius: 999px; font-size: 12px; cursor: pointer; color: var(--muted);
+    user-select: none; transition: all 0.1s;
+  }
+  .filter-chip:hover { border-color: var(--accent); color: var(--text); }
+  .filter-chip.active { background: var(--accent); border-color: var(--accent); color: white; }
+  .filter-chip.flag { background: rgba(255,209,102,0.10); color: var(--warn); border-color: rgba(255,209,102,0.4); }
+  .filter-chip.flag.active { background: var(--warn); color: var(--bg); border-color: var(--warn); }
+
+  .active-chip-row { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 8px; }
+  .active-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; background: var(--accent-soft); color: var(--accent);
+    border-radius: 999px; font-size: 12px; font-weight: 500;
+  }
+  .active-chip .x { cursor: pointer; opacity: 0.7; font-weight: 700; padding: 0 1px; }
+  .active-chip .x:hover { opacity: 1; }
+  .clear-all {
+    padding: 4px 10px; background: transparent; border: 1px dashed var(--border);
+    border-radius: 999px; font-size: 12px; cursor: pointer; color: var(--muted);
+  }
+  .clear-all:hover { border-color: var(--bad); color: var(--bad); }
+
+  /* STATS BAR */
+  .stats-bar {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 10px 14px; background: var(--panel-2); border-radius: 10px;
+    font-size: 13px; margin-bottom: 14px;
+  }
+  .stats-bar .stat b { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); }
+  .stats-bar .stat { color: var(--muted); }
+  .stats-bar .actions { margin-left: auto; display: flex; gap: 6px; }
+  .stats-bar .btn {
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500;
+  }
+  .stats-bar .btn:hover { border-color: var(--accent); }
+  .stats-bar .btn.primary { background: var(--accent); border-color: var(--accent); color: white; }
+  .stats-bar .btn.primary:hover { opacity: 0.9; }
+  .stats-bar .pending {
+    background: rgba(255,209,102,0.15); color: var(--warn);
+    padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  }
+
+  /* TX LIST */
+  .day-group { margin-bottom: 10px; }
+  .day-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 6px; font-size: 11px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600;
+    border-bottom: 1px solid var(--border); margin-bottom: 4px;
+    position: sticky; top: 0; background: var(--bg); z-index: 5;
+  }
+  .day-header .day-total { color: var(--text); font-weight: 700; font-variant-numeric: tabular-nums; text-transform: none; letter-spacing: 0; }
+
+  .tx-row {
+    display: grid;
+    grid-template-columns: 70px 130px 1fr 70px 100px 1fr 80px;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 6px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .tx-row:hover { background: var(--panel-2); }
+  .tx-row.expanded { background: var(--panel-2); }
+  .tx-row.edited { border-left: 2px solid var(--warn); padding-left: 4px; }
+  .tx-row.deleted { opacity: 0.4; text-decoration: line-through; border-left: 2px solid var(--bad); padding-left: 4px; }
+  .tx-row .time { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .tx-row .merch { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tx-row .amt { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+  .tx-row .note { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tx-row .flags { display: flex; gap: 2px; align-items: center; justify-content: flex-end; font-size: 13px; }
+  .tx-row .flag-icon { cursor: help; opacity: 0.85; }
+
+  @media (max-width: 800px) {
+    .tx-row {
+      grid-template-columns: 1fr auto;
+      grid-template-areas:
+        "merch amt"
+        "meta meta";
+      gap: 4px;
+      padding: 10px 6px;
+    }
+    .tx-row .time { display: none; }
+    .tx-row .merch { grid-area: merch; }
+    .tx-row .amt { grid-area: amt; }
+    .tx-row .cat-chip-cell, .tx-row .pmt-cell, .tx-row .note, .tx-row .flags {
+      grid-area: meta; display: inline; font-size: 11px; color: var(--muted); text-align: left;
+    }
+    .tx-row .note::before { content: " · "; }
+  }
+
+  .pill {
+    display: inline-block; padding: 2px 8px; background: var(--panel-2); border-radius: 999px;
+    font-size: 11px; color: var(--muted); white-space: nowrap; font-weight: 500;
+  }
+  .pill[data-cat="Food & Beverage"] { background: rgba(255,158,79,0.15); color: #ff9e4f; }
+  .pill[data-cat="Groceries"] { background: rgba(107,213,138,0.15); color: var(--good); }
+  .pill[data-cat="Transportation"] { background: rgba(94,166,255,0.15); color: var(--accent); }
+  .pill[data-cat="Bills & Rent"] { background: rgba(192,132,252,0.15); color: #c084fc; }
+  .pill[data-cat="Subscriptions"] { background: rgba(255,209,102,0.15); color: var(--warn); }
+  .pill[data-cat="Recreation"] { background: rgba(78,205,196,0.15); color: #4ecdc4; }
+  .pill[data-cat="Clothing"] { background: rgba(255,102,204,0.15); color: #ff66cc; }
+  .pill[data-cat="Health"] { background: rgba(255,122,122,0.15); color: var(--bad); }
+  .pill[data-cat="Person"] { background: rgba(163,177,196,0.15); color: var(--muted); }
+  .pill[data-cat="Misc"] { background: var(--panel-2); color: var(--muted); }
+
+  .badge {
+    display: inline-block; padding: 1px 7px; background: var(--panel-2);
+    border-radius: 4px; font-size: 10px; font-weight: 700; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap;
+  }
+  .badge.upi { background: rgba(94,166,255,0.15); color: var(--accent); }
+  .badge.credit_card { background: rgba(255,158,79,0.18); color: #ff9e4f; }
+  .badge.debit_card { background: rgba(192,132,252,0.18); color: #c084fc; }
+  .badge.cash { background: rgba(107,213,138,0.18); color: var(--good); }
+  .badge.wallet { background: rgba(255,209,102,0.18); color: var(--warn); }
+
+  /* EXPANDED ROW (edit form) */
+  .tx-expand {
+    border-bottom: 1px solid var(--border);
+    padding: 14px 12px;
+    background: var(--panel);
+    border-left: 3px solid var(--accent);
+  }
+  .tx-expand .meta-line {
+    color: var(--muted); font-size: 12px; margin-bottom: 12px;
+    word-break: break-word;
+  }
+  .tx-expand .meta-line .raw {
+    background: var(--panel-2); padding: 2px 8px; border-radius: 4px;
+    font-family: ui-monospace, monospace; font-size: 12px; color: var(--text);
+  }
+  .edit-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 12px; }
+  .edit-grid label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  .edit-grid input, .edit-grid select {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 10px; border-radius: 6px; font-size: 13px;
+    text-transform: none; letter-spacing: 0; font-weight: normal;
+  }
+  .edit-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .edit-actions button {
+    padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 500;
+    border: 1px solid var(--border); background: var(--panel-2); color: var(--text); cursor: pointer;
+  }
+  .edit-actions button.primary { background: var(--accent); border-color: var(--accent); color: white; }
+  .edit-actions button.primary:hover { opacity: 0.9; }
+  .edit-actions button.danger { color: var(--bad); }
+  .edit-actions button.danger:hover { background: var(--bad); color: white; border-color: var(--bad); }
+
+  .empty-list {
+    padding: 60px 20px; text-align: center; color: var(--muted); font-size: 13px;
+  }
+
+  .errors { background: rgba(255,122,122,0.08); border: 1px solid var(--bad); color: var(--bad);
+            padding: 8px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
+  .toast {
+    position: fixed; right: 20px; bottom: 20px;
+    background: var(--panel); border: 1px solid var(--border);
+    padding: 10px 14px; border-radius: 10px; font-size: 13px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18); display: none; z-index: 100;
+  }
+  .toast.good { border-color: var(--good); }
+  .toast.bad  { border-color: var(--bad); }
+
+  /* Floating "scroll to top" */
+  .scroll-top {
+    position: fixed; right: 20px; bottom: 70px;
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    width: 40px; height: 40px; border-radius: 50%; cursor: pointer;
+    display: none; align-items: center; justify-content: center;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.15); font-size: 18px;
+  }
+  .scroll-top.shown { display: flex; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <span class="brand">Expense Trends</span>
+  <nav>
+    <a href="index.html">Dashboard</a>
+    <a href="month.html">Month</a>
+    <a href="year.html">Year</a>
+    <a class="active" href="transactions.html">Transactions</a>
+  </nav>
+  <span class="header-spacer"></span>
+  <div class="picker">
+    <span class="filename" id="filename"></span>
+    <label for="fileInput" id="pickerLabel">Load expenses.txt</label>
+    <input type="file" id="fileInput" accept=".txt,.jsonl,.json,application/json">
+  </div>
+</header>
+
+<div id="empty">
+  <p>Pick the file at:</p>
+  <p><code>iCloud Drive › Shortcuts_Data › logs › expenses.txt</code></p>
+</div>
+
+<div id="errors" class="errors" style="display:none"></div>
+
+<main id="main">
+
+  <section class="card">
+    <div class="filter-bar">
+      <input type="search" id="search" placeholder="Search merchant, note, raw text, amount...">
+      <select id="dateRange">
+        <option value="all">All time</option>
+        <option value="today">Today</option>
+        <option value="week">This week</option>
+        <option value="month">This month</option>
+        <option value="last-month">Last month</option>
+        <option value="30">Last 30 days</option>
+        <option value="90">Last 90 days</option>
+      </select>
+      <span class="group">
+        <span class="lbl">amt</span>
+        <input type="number" id="amtMin" placeholder="min" min="0">
+        <input type="number" id="amtMax" placeholder="max" min="0">
+      </span>
+    </div>
+    <div class="chip-row" id="catChips"></div>
+    <div class="chip-row" id="pmtChips"></div>
+    <div class="active-chip-row" id="activeChips" style="display:none"></div>
+  </section>
+
+  <div class="stats-bar" id="statsBar"></div>
+
+  <div id="txList"></div>
+
+</main>
+</div>
+
+<button class="scroll-top" id="scrollTop" title="Scroll to top">↑</button>
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── constants & state ────────────────────────────────────────────────
+const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+const CATEGORIES = ['Food & Beverage', 'Groceries', 'Transportation', 'Bills & Rent', 'Subscriptions', 'Recreation', 'Clothing', 'Health', 'Person', 'Misc'];
+const PAYMENT_METHODS = [
+  { id: 'upi', label: 'UPI' },
+  { id: 'credit_card', label: 'Credit' },
+  { id: 'debit_card', label: 'Debit' },
+  { id: 'cash', label: 'Cash' },
+  { id: 'wallet', label: 'Wallet' },
+];
+
+let allEntries = [];
+// Edit overlay: Map<idx, {field updates, _deleted?: true}>
+let edits = new Map();
+let expandedIdx = null;
+
+let filters = {
+  search: '',
+  dateRange: 'all',
+  categories: new Set(),
+  payments: new Set(),
+  amtMin: null,
+  amtMax: null,
+  flagOnly: false,
+};
+
+// ─── utilities ────────────────────────────────────────────────────────
+function compactINR(v) {
+  if (v >= 100000) return '₹' + (v / 100000).toFixed(1) + 'L';
+  if (v >= 10000) return '₹' + Math.round(v / 1000) + 'k';
+  if (v >= 1000) return '₹' + (v / 1000).toFixed(1) + 'k';
+  return '₹' + Math.round(v);
+}
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function startOfDay(d) { const x = new Date(d); x.setHours(0,0,0,0); return x; }
+function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+function startOfWeek(d) {
+  const x = startOfDay(d);
+  const day = x.getDay() === 0 ? 6 : x.getDay() - 1;
+  x.setDate(x.getDate() - day);
+  return x;
+}
+function dateKey(d) {
+  const x = startOfDay(d);
+  return x.getFullYear() + '-' + String(x.getMonth()+1).padStart(2,'0') + '-' + String(x.getDate()).padStart(2,'0');
+}
+function fmtTime(d) { return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }); }
+function fmtDayHeader(d) {
+  return d.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+}
+function toast(msg, kind = '') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + kind;
+  t.style.display = 'block';
+  clearTimeout(t._h);
+  t._h = setTimeout(() => t.style.display = 'none', 2500);
+}
+
+// ─── file load + cache ────────────────────────────────────────────────
+function showError(msg) {
+  const box = document.getElementById('errors');
+  box.style.display = 'block';
+  box.textContent = msg;
+}
+document.getElementById('fileInput').addEventListener('change', async (e) => {
+  try {
+    const file = e.target.files[0];
+    if (!file) return;
+    const text = file.text ? await file.text() : await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result);
+      r.onerror = () => rej(r.error);
+      r.readAsText(file);
+    });
+    if (!text.length) { showError('File is empty.'); return; }
+    loadData(text);
+  } catch (err) {
+    showError(`Load failed: ${err.message || err}`);
+  }
+});
+
+function loadData(text) {
+  const entries = [];
+  text.split(/\r?\n/).forEach((line, i) => {
+    const t = line.trim();
+    if (!t) return;
+    try {
+      const o = JSON.parse(t);
+      if (typeof o.amount === 'string') o.amount = parseFloat(o.amount);
+      o._date = new Date(o.ts);
+      o._dayKey = dateKey(o._date);
+      o._idx = entries.length;
+      entries.push(o);
+    } catch (err) {}
+  });
+  entries.sort((a, b) => b._date - a._date); // newest first
+  // Re-index after sort
+  entries.forEach((e, i) => { e._idx = i; });
+  allEntries = entries;
+
+  // Compute anomaly flags (new merchant, possible duplicate)
+  computeFlags();
+
+  // Restore any prior edits from localStorage
+  try {
+    const editsRaw = localStorage.getItem('expense-edits');
+    if (editsRaw) edits = new Map(JSON.parse(editsRaw));
+  } catch (e) { edits = new Map(); }
+
+  if (!entries.length) {
+    document.getElementById('empty').textContent = 'File loaded but no valid entries.';
+    return;
+  }
+
+  try {
+    localStorage.setItem('expense-data', text);
+    localStorage.setItem('expense-data-ts', new Date().toISOString());
+    updateLastLoaded();
+  } catch (e) {}
+
+  document.getElementById('empty').style.display = 'none';
+  document.getElementById('main').classList.add('loaded');
+
+  renderChips();
+  render();
+}
+
+function updateLastLoaded() {
+  const ts = localStorage.getItem('expense-data-ts');
+  if (!ts) return;
+  const d = new Date(ts);
+  const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+  let lbl;
+  if (mins < 1) lbl = 'just now';
+  else if (mins < 60) lbl = mins + 'm ago';
+  else if (mins < 1440) lbl = Math.floor(mins/60) + 'h ago';
+  else lbl = Math.floor(mins/1440) + 'd ago';
+  document.getElementById('filename').textContent = 'Loaded ' + lbl;
+  document.getElementById('pickerLabel').textContent = 'Refresh';
+}
+
+// ─── anomaly flags ────────────────────────────────────────────────────
+function computeFlags() {
+  // Pass 1: merchant first-seen index. Sorted newest first, so a smaller _idx
+  // corresponds to a more recent entry. We want "first seen ever" = max _idx
+  // for that merchant. If this entry has the max _idx, it's the oldest, not the new one.
+  // Let's compute by date instead.
+  const firstSeen = new Map();   // merchant_lc -> earliest Date
+  const lastSeen = new Map();    // merchant_lc -> latest Date
+  allEntries.forEach(e => {
+    const k = (e.merchant || '').toLowerCase().trim();
+    if (!k) return;
+    if (!firstSeen.has(k) || e._date < firstSeen.get(k)) firstSeen.set(k, e._date);
+    if (!lastSeen.has(k) || e._date > lastSeen.get(k)) lastSeen.set(k, e._date);
+  });
+
+  // Pass 2: assign flags.
+  // 🆕 new merchant: this entry is the FIRST appearance of its merchant AND
+  //                  the merchant's last appearance is within the last 30 days
+  //                  (i.e. recently arrived in the data).
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
+
+  // Pass 3: duplicate detection — same merchant, same amount, within 10 minutes of another entry.
+  // Index by merchant+amount key for O(N) detection.
+  const groups = new Map();
+  allEntries.forEach(e => {
+    const k = `${(e.merchant || '').toLowerCase().trim()}|${e.amount}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(e);
+  });
+  const dupSet = new Set();
+  for (const [, arr] of groups) {
+    if (arr.length < 2) continue;
+    arr.sort((a, b) => a._date - b._date);
+    for (let i = 1; i < arr.length; i++) {
+      const dt = (arr[i]._date - arr[i-1]._date) / 60000;
+      if (dt <= 10) {
+        dupSet.add(arr[i]._idx);
+        dupSet.add(arr[i-1]._idx);
+      }
+    }
+  }
+
+  allEntries.forEach(e => {
+    const flags = [];
+    const k = (e.merchant || '').toLowerCase().trim();
+    if (k && firstSeen.get(k)?.getTime() === e._date.getTime() && lastSeen.get(k) >= thirtyDaysAgo) {
+      // Only flag as new if this merchant first appeared recently (so backfilled history doesn't all show as new)
+      if (firstSeen.get(k) >= thirtyDaysAgo) flags.push('new');
+    }
+    if (dupSet.has(e._idx)) flags.push('dup');
+    e._flags = flags;
+  });
+}
+
+// ─── effective entry (apply pending edits) ────────────────────────────
+function effective(e) {
+  const ed = edits.get(e._idx);
+  if (!ed) return e;
+  return { ...e, ...ed };
+}
+function isDeleted(e) {
+  return edits.get(e._idx)?._deleted === true;
+}
+function isEdited(e) {
+  const ed = edits.get(e._idx);
+  return !!ed && !ed._deleted;
+}
+
+// ─── filter chips ────────────────────────────────────────────────────
+function renderChips() {
+  const catBox = document.getElementById('catChips');
+  catBox.innerHTML =
+    '<span class="lbl-chip">Categories</span>' +
+    CATEGORIES.map(c => `<div class="filter-chip ${filters.categories.has(c) ? 'active' : ''}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</div>`).join('') +
+    `<div class="filter-chip flag ${filters.flagOnly ? 'active' : ''}" id="flagChip">⚑ Flagged only</div>`;
+  catBox.querySelectorAll('.filter-chip[data-cat]').forEach(el => {
+    el.addEventListener('click', () => {
+      const c = el.dataset.cat;
+      if (filters.categories.has(c)) filters.categories.delete(c);
+      else filters.categories.add(c);
+      renderChips(); render();
+    });
+  });
+  document.getElementById('flagChip').addEventListener('click', () => {
+    filters.flagOnly = !filters.flagOnly; renderChips(); render();
+  });
+
+  const pmtBox = document.getElementById('pmtChips');
+  pmtBox.innerHTML =
+    '<span class="lbl-chip">Payment</span>' +
+    PAYMENT_METHODS.map(p => `<div class="filter-chip ${filters.payments.has(p.id) ? 'active' : ''}" data-pmt="${p.id}">${p.label}</div>`).join('');
+  pmtBox.querySelectorAll('.filter-chip').forEach(el => {
+    el.addEventListener('click', () => {
+      const p = el.dataset.pmt;
+      if (filters.payments.has(p)) filters.payments.delete(p);
+      else filters.payments.add(p);
+      renderChips(); render();
+    });
+  });
+}
+
+function renderActiveChips() {
+  const box = document.getElementById('activeChips');
+  const chips = [];
+  if (filters.search) chips.push(`<span class="active-chip">Search: "${escapeHtml(filters.search)}" <span class="x" data-clear="search">×</span></span>`);
+  if (filters.dateRange !== 'all') {
+    const dropdownSel = document.getElementById('dateRange');
+    const lbl = dropdownSel.options[dropdownSel.selectedIndex].text;
+    chips.push(`<span class="active-chip">${escapeHtml(lbl)} <span class="x" data-clear="dateRange">×</span></span>`);
+  }
+  filters.categories.forEach(c => chips.push(`<span class="active-chip">${escapeHtml(c)} <span class="x" data-clear="cat" data-val="${escapeHtml(c)}">×</span></span>`));
+  filters.payments.forEach(p => {
+    const lbl = PAYMENT_METHODS.find(m => m.id === p)?.label || p;
+    chips.push(`<span class="active-chip">${escapeHtml(lbl)} <span class="x" data-clear="pmt" data-val="${p}">×</span></span>`);
+  });
+  if (filters.amtMin != null || filters.amtMax != null) {
+    const lo = filters.amtMin != null ? '₹' + filters.amtMin : '';
+    const hi = filters.amtMax != null ? '₹' + filters.amtMax : '';
+    chips.push(`<span class="active-chip">Amount ${lo}–${hi || '∞'} <span class="x" data-clear="amt">×</span></span>`);
+  }
+  if (filters.flagOnly) chips.push(`<span class="active-chip">⚑ Flagged only <span class="x" data-clear="flag">×</span></span>`);
+
+  if (chips.length === 0) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  chips.push('<button class="clear-all" id="clearAll">Clear all</button>');
+  box.innerHTML = chips.join('');
+
+  box.querySelectorAll('.x').forEach(el => {
+    el.addEventListener('click', () => {
+      const k = el.dataset.clear;
+      if (k === 'search') { filters.search = ''; document.getElementById('search').value = ''; }
+      else if (k === 'dateRange') { filters.dateRange = 'all'; document.getElementById('dateRange').value = 'all'; }
+      else if (k === 'cat') filters.categories.delete(el.dataset.val);
+      else if (k === 'pmt') filters.payments.delete(el.dataset.val);
+      else if (k === 'amt') {
+        filters.amtMin = null; filters.amtMax = null;
+        document.getElementById('amtMin').value = ''; document.getElementById('amtMax').value = '';
+      }
+      else if (k === 'flag') filters.flagOnly = false;
+      renderChips(); render();
+    });
+  });
+  document.getElementById('clearAll')?.addEventListener('click', clearAllFilters);
+}
+
+function clearAllFilters() {
+  filters = { search: '', dateRange: 'all', categories: new Set(), payments: new Set(), amtMin: null, amtMax: null, flagOnly: false };
+  document.getElementById('search').value = '';
+  document.getElementById('dateRange').value = 'all';
+  document.getElementById('amtMin').value = '';
+  document.getElementById('amtMax').value = '';
+  renderChips(); render();
+}
+
+// ─── filter logic ────────────────────────────────────────────────────
+function getDateRange() {
+  const now = new Date();
+  switch (filters.dateRange) {
+    case 'today': return [startOfDay(now), null];
+    case 'week': return [startOfWeek(now), null];
+    case 'month': return [startOfMonth(now), null];
+    case 'last-month': {
+      const ls = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const le = new Date(now.getFullYear(), now.getMonth(), 1);
+      return [ls, le];
+    }
+    case '30': return [new Date(now.getTime() - 30 * 86400000), null];
+    case '90': return [new Date(now.getTime() - 90 * 86400000), null];
+    default: return [null, null];
+  }
+}
+
+function getFiltered() {
+  const [from, to] = getDateRange();
+  const q = filters.search.trim().toLowerCase();
+  const result = [];
+  for (const e of allEntries) {
+    if (isDeleted(e)) continue;
+    const eff = effective(e);
+    if (from && eff._date < from) continue;
+    if (to && eff._date >= to) continue;
+    if (filters.categories.size && !filters.categories.has(eff.category)) continue;
+    if (filters.payments.size && !filters.payments.has(eff.payment_method)) continue;
+    if (filters.amtMin != null && (eff.amount || 0) < filters.amtMin) continue;
+    if (filters.amtMax != null && (eff.amount || 0) > filters.amtMax) continue;
+    if (filters.flagOnly && !(e._flags && e._flags.length)) continue;
+    if (q) {
+      const blob = `${eff.merchant || ''} ${eff.note || ''} ${eff.category || ''} ${eff.payment_method || ''} ${eff.raw_text || ''} ${eff.amount}`.toLowerCase();
+      if (!blob.includes(q)) continue;
+    }
+    result.push(e);
+  }
+  return result;
+}
+
+// ─── render ───────────────────────────────────────────────────────────
+function render() {
+  renderActiveChips();
+
+  const filtered = getFiltered();
+  const total = filtered.reduce((s, e) => s + (effective(e).amount || 0), 0);
+  const avg = filtered.length ? total / filtered.length : 0;
+
+  const pendingCount = [...edits.values()].filter(v => v._deleted || Object.keys(v).some(k => k !== '_deleted')).length;
+
+  document.getElementById('statsBar').innerHTML = `
+    <div class="stat"><b>${filtered.length}</b> transactions</div>
+    <div class="stat">total <b>${INR.format(total)}</b></div>
+    <div class="stat">avg <b>${INR.format(avg)}</b></div>
+    ${pendingCount > 0 ? `<div class="pending">${pendingCount} pending change${pendingCount===1?'':'s'}</div>` : ''}
+    <div class="actions">
+      <button class="btn" onclick="exportCsv()">Export CSV</button>
+      ${pendingCount > 0 ? '<button class="btn primary" onclick="downloadModified()">Apply changes (download .txt)</button>' : ''}
+      ${pendingCount > 0 ? '<button class="btn" onclick="discardEdits()">Discard</button>' : ''}
+    </div>
+  `;
+
+  // Group by day
+  const byDay = new Map();
+  filtered.forEach(e => {
+    const eff = effective(e);
+    const k = dateKey(eff._date);
+    if (!byDay.has(k)) byDay.set(k, { total: 0, entries: [] });
+    const grp = byDay.get(k);
+    grp.total += eff.amount || 0;
+    grp.entries.push(e);
+  });
+  const sortedDays = [...byDay.keys()].sort().reverse(); // newest first
+
+  const list = document.getElementById('txList');
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="empty-list">No transactions match your filters.</div>';
+    return;
+  }
+
+  list.innerHTML = sortedDays.map(dayKey => {
+    const grp = byDay.get(dayKey);
+    const dateObj = new Date(dayKey + 'T00:00:00');
+    const rows = grp.entries.map(e => renderRow(e)).join('');
+    return `
+      <div class="day-group">
+        <div class="day-header">
+          <span>${escapeHtml(fmtDayHeader(dateObj))} · ${grp.entries.length} txn</span>
+          <span class="day-total">${INR.format(grp.total)}</span>
+        </div>
+        ${rows}
+      </div>
+    `;
+  }).join('');
+
+  // Wire up row clicks
+  list.querySelectorAll('.tx-row').forEach(el => {
+    el.addEventListener('click', (ev) => {
+      // Don't toggle if click is inside the expand block
+      if (ev.target.closest('.tx-expand')) return;
+      toggleExpand(parseInt(el.dataset.idx, 10));
+    });
+  });
+}
+
+function renderRow(e) {
+  const eff = effective(e);
+  const edited = isEdited(e);
+  const flagsHtml = (e._flags || []).map(f => {
+    if (f === 'new') return '<span class="flag-icon" title="First time seeing this merchant">🆕</span>';
+    if (f === 'dup') return '<span class="flag-icon" title="Possible duplicate (same merchant + amount within 10 min)">🔁</span>';
+    return '';
+  }).join('');
+
+  const pm = eff.payment_method || '';
+  const pmLabel = (pm || '').replace('_card', '').toUpperCase();
+
+  return `
+    <div class="tx-row ${expandedIdx === e._idx ? 'expanded' : ''} ${edited ? 'edited' : ''}" data-idx="${e._idx}">
+      <div class="time">${escapeHtml(fmtTime(eff._date))}</div>
+      <div class="cat-chip-cell"><span class="pill" data-cat="${escapeHtml(eff.category || '')}">${escapeHtml(eff.category || '')}</span></div>
+      <div class="merch">${escapeHtml(eff.merchant || '—')}</div>
+      <div class="pmt-cell"><span class="badge ${escapeHtml(pm)}">${escapeHtml(pmLabel)}</span></div>
+      <div class="amt">${INR.format(eff.amount || 0)}</div>
+      <div class="note" title="${escapeHtml(eff.note || '')}">${escapeHtml(eff.note || '')}</div>
+      <div class="flags">${flagsHtml}</div>
+      ${expandedIdx === e._idx ? renderExpand(e) : ''}
+    </div>
+  `;
+}
+
+function renderExpand(e) {
+  const eff = effective(e);
+  const tsLabel = eff._date.toLocaleString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return `
+    <div class="tx-expand" style="grid-column: 1 / -1">
+      <div class="meta-line">
+        ${escapeHtml(tsLabel)} · source: <b>${escapeHtml(eff.source || 'manual')}</b>
+        ${eff.card_last4 ? ' · card ..' + escapeHtml(eff.card_last4) : ''}
+        <br>raw: <span class="raw">${escapeHtml(eff.raw_text || '(empty)')}</span>
+      </div>
+      <div class="edit-grid">
+        <label>Merchant<input id="ed-merch-${e._idx}" value="${escapeHtml(eff.merchant || '')}"></label>
+        <label>Category<select id="ed-cat-${e._idx}">${CATEGORIES.map(c => `<option ${c===eff.category?'selected':''}>${escapeHtml(c)}</option>`).join('')}</select></label>
+        <label>Payment<select id="ed-pmt-${e._idx}">${PAYMENT_METHODS.map(p => `<option value="${p.id}" ${p.id===eff.payment_method?'selected':''}>${escapeHtml(p.label)}</option>`).join('')}</select></label>
+        <label>Amount<input id="ed-amt-${e._idx}" type="number" step="0.01" value="${eff.amount || 0}"></label>
+        <label>Note<input id="ed-note-${e._idx}" value="${escapeHtml(eff.note || '')}"></label>
+      </div>
+      <div class="edit-actions">
+        <button class="primary" onclick="saveEdit(${e._idx})">Save</button>
+        <button onclick="cancelEdit(${e._idx})">Cancel</button>
+        <button class="danger" onclick="deleteEntry(${e._idx})">Delete</button>
+        ${edits.has(e._idx) ? `<button onclick="revertEdit(${e._idx})">Revert</button>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+function toggleExpand(idx) {
+  expandedIdx = expandedIdx === idx ? null : idx;
+  render();
+}
+
+function saveEdit(idx) {
+  const e = allEntries[idx];
+  const newM = document.getElementById('ed-merch-' + idx).value.trim();
+  const newC = document.getElementById('ed-cat-' + idx).value;
+  const newP = document.getElementById('ed-pmt-' + idx).value;
+  const newA = parseFloat(document.getElementById('ed-amt-' + idx).value) || 0;
+  const newN = document.getElementById('ed-note-' + idx).value.trim();
+
+  const update = {};
+  if (newM !== (e.merchant || '')) update.merchant = newM;
+  if (newC !== e.category) update.category = newC;
+  if (newP !== e.payment_method) update.payment_method = newP;
+  if (newA !== e.amount) update.amount = newA;
+  if (newN !== (e.note || '')) update.note = newN;
+
+  if (Object.keys(update).length === 0) {
+    // No changes; just close
+    expandedIdx = null;
+    render();
+    return;
+  }
+
+  edits.set(idx, { ...edits.get(idx), ...update });
+  delete edits.get(idx)._deleted;  // un-delete if it was
+  persistEdits();
+  expandedIdx = null;
+  toast('Saved (pending) — click "Apply changes" to download new file', 'good');
+  render();
+}
+
+function cancelEdit(idx) {
+  expandedIdx = null;
+  render();
+}
+
+function deleteEntry(idx) {
+  if (!confirm('Delete this transaction? It will be removed when you Apply changes.')) return;
+  edits.set(idx, { ...edits.get(idx), _deleted: true });
+  persistEdits();
+  expandedIdx = null;
+  toast('Marked for deletion (pending)', 'good');
+  render();
+}
+
+function revertEdit(idx) {
+  edits.delete(idx);
+  persistEdits();
+  expandedIdx = null;
+  toast('Reverted', '');
+  render();
+}
+
+function discardEdits() {
+  if (!confirm('Discard all pending changes?')) return;
+  edits.clear();
+  persistEdits();
+  toast('All pending changes discarded', '');
+  render();
+}
+
+function persistEdits() {
+  try {
+    localStorage.setItem('expense-edits', JSON.stringify([...edits.entries()]));
+  } catch (e) {}
+}
+
+// ─── apply changes / download ────────────────────────────────────────
+function downloadModified() {
+  const lines = [];
+  for (const e of allEntries) {
+    if (isDeleted(e)) continue;
+    const eff = effective(e);
+    const clean = {
+      ts: eff.ts,
+      amount: eff.amount,
+      currency: eff.currency,
+      merchant: eff.merchant,
+      category: eff.category,
+      payment_method: eff.payment_method,
+      source: eff.source,
+      card_last4: eff.card_last4 || '',
+      raw_text: eff.raw_text || '',
+      note: eff.note || '',
+    };
+    lines.push(JSON.stringify(clean));
+  }
+  const text = lines.join('\n') + '\n';
+  const blob = new Blob([text], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'expenses.txt';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+  toast('Downloaded expenses.txt — replace your iCloud file with this version', 'good');
+}
+
+function exportCsv() {
+  const filtered = getFiltered();
+  const cols = ['ts', 'date', 'merchant', 'category', 'payment_method', 'amount', 'note', 'source', 'card_last4', 'raw_text'];
+  const rows = [cols.join(',')];
+  for (const e of filtered) {
+    const eff = effective(e);
+    const date = eff._date.toISOString().slice(0, 10);
+    const row = [
+      eff.ts,
+      date,
+      eff.merchant || '',
+      eff.category || '',
+      eff.payment_method || '',
+      eff.amount || 0,
+      eff.note || '',
+      eff.source || '',
+      eff.card_last4 || '',
+      (eff.raw_text || '').replace(/\n/g, ' '),
+    ].map(v => {
+      const s = String(v);
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    });
+    rows.push(row.join(','));
+  }
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `expenses-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  toast(`Exported ${filtered.length} rows to CSV`, 'good');
+}
+
+// ─── input listeners ─────────────────────────────────────────────────
+let searchDebounce;
+document.getElementById('search').addEventListener('input', (e) => {
+  clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => {
+    filters.search = e.target.value;
+    render();
+  }, 150);
+});
+document.getElementById('dateRange').addEventListener('change', (e) => {
+  filters.dateRange = e.target.value;
+  render();
+});
+document.getElementById('amtMin').addEventListener('change', (e) => {
+  const v = e.target.value === '' ? null : parseFloat(e.target.value);
+  filters.amtMin = isNaN(v) ? null : v;
+  render();
+});
+document.getElementById('amtMax').addEventListener('change', (e) => {
+  const v = e.target.value === '' ? null : parseFloat(e.target.value);
+  filters.amtMax = isNaN(v) ? null : v;
+  render();
+});
+
+// Scroll-to-top button
+window.addEventListener('scroll', () => {
+  const btn = document.getElementById('scrollTop');
+  if (window.scrollY > 600) btn.classList.add('shown');
+  else btn.classList.remove('shown');
+});
+document.getElementById('scrollTop').addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+
+// ─── INIT ────────────────────────────────────────────────────────────
+(function init() {
+  try {
+    const cached = localStorage.getItem('expense-data');
+    if (cached && cached.length) loadData(cached);
+  } catch (e) {}
+})();
+</script>
+
+</body>
+</html>
