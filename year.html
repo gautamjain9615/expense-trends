@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Year · Expense Trends</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #181b22; --panel-2: #1f232c; --border: #2a2f3a;
+    --text: #e6e9ef; --muted: #8b93a3; --accent: #5ea6ff; --accent-soft: rgba(94,166,255,0.15);
+    --good: #6bd58a; --bad: #ff7a7a; --warn: #ffd166;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f7f8fa; --panel: #ffffff; --panel-2: #f1f3f7; --border: #e6e8ef;
+      --text: #1a1d23; --muted: #6b7280; --accent: #2b6cff; --accent-soft: rgba(43,108,255,0.10);
+      --good: #1f9d55; --bad: #c0392b; --warn: #b7791f;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    background: var(--bg); color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 20px; }
+
+  /* HEADER */
+  header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+  .brand { font-size: 18px; font-weight: 600; }
+  nav { display: flex; gap: 4px; }
+  nav a {
+    padding: 6px 12px; border-radius: 7px; font-size: 13px; font-weight: 500;
+    text-decoration: none; color: var(--muted);
+  }
+  nav a.active { background: var(--accent-soft); color: var(--accent); }
+  nav a.disabled { color: var(--muted); opacity: 0.45; cursor: not-allowed; }
+  nav a.disabled::after { content: " · soon"; font-size: 11px; opacity: 0.7; }
+
+  .year-select {
+    background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 12px; border-radius: 7px; font-size: 13px; font-weight: 500;
+    cursor: pointer;
+  }
+  .header-spacer { flex: 1; }
+  .picker { display: flex; align-items: center; gap: 10px; }
+  .picker .filename { font-size: 12px; color: var(--muted); }
+  .picker label {
+    padding: 7px 12px; background: var(--accent); color: white; border-radius: 7px;
+    cursor: pointer; font-size: 13px; font-weight: 500;
+  }
+  .picker label:hover { opacity: 0.9; }
+  .picker input { display: none; }
+
+  /* EMPTY */
+  #empty { text-align: center; padding: 80px 20px; color: var(--muted); }
+  #empty p { margin: 8px 0; }
+  #empty code { background: var(--panel); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+
+  main { display: none; }
+  main.loaded { display: block; }
+
+  /* STATUS — 5 TILES */
+  .status { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 16px; }
+  @media (max-width: 1100px) { .status { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 600px) { .status { grid-template-columns: repeat(2, 1fr); } }
+  .tile {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px 14px;
+  }
+  .tile .label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+  .tile .value { font-size: 22px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; line-height: 1.15; }
+  .tile .value.small { font-size: 16px; line-height: 1.25; }
+  .tile .sub { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+  .tile .sub.up, .tile .value.up { color: var(--bad); }
+  .tile .sub.down, .tile .value.down { color: var(--good); }
+
+  /* PROSE */
+  .prose-card {
+    background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;
+    font-size: 14px; line-height: 1.7;
+  }
+  .prose-card b { color: var(--text); font-weight: 600; }
+  .prose-card .pos { color: var(--bad); font-weight: 600; }
+  .prose-card .neg { color: var(--good); font-weight: 600; }
+
+  /* SECTION CARD */
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px; margin-bottom: 16px;
+  }
+  .card h2 {
+    margin: 0 0 12px; font-size: 12px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .card h2 .h-sub { color: var(--muted); font-weight: 500; text-transform: none; letter-spacing: 0; font-size: 11px; }
+
+  .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  @media (max-width: 900px) { .row-2, .row-3 { grid-template-columns: 1fr; } }
+
+  /* CHARTS */
+  .chart-h { height: 280px; }
+  .chart-h canvas { max-height: 280px; }
+  .chart-h-tall { height: 360px; }
+  .chart-h-tall canvas { max-height: 360px; }
+
+  /* TREND STRIP */
+  .trend-row {
+    display: grid;
+    grid-template-columns: 130px 1fr 80px 90px 50px;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .trend-row:last-child { border-bottom: 0; }
+  @media (max-width: 700px) {
+    .trend-row { grid-template-columns: 100px 1fr 70px 80px 40px; gap: 8px; font-size: 12px; }
+  }
+  .trend-row .name { color: var(--text); font-weight: 500; }
+  .trend-row .spark { display: flex; align-items: center; }
+  .trend-row .total { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+  .trend-row .trend-arrow { text-align: right; font-variant-numeric: tabular-nums; font-size: 11px; }
+  .trend-row .trend-arrow.up { color: var(--bad); }
+  .trend-row .trend-arrow.down { color: var(--good); }
+  .trend-row .trend-arrow.flat { color: var(--muted); }
+  .trend-row .pct { text-align: right; color: var(--muted); font-size: 11px; }
+
+  /* COMPOSITION */
+  .comp-bar {
+    display: flex; height: 18px; border-radius: 4px; overflow: hidden;
+    margin-bottom: 12px; background: var(--panel-2);
+  }
+  .comp-bar > div {
+    height: 100%;
+    transition: opacity 0.15s;
+  }
+  .comp-bar > div:hover { opacity: 0.85; }
+  .comp-list { list-style: none; padding: 0; margin: 0; }
+  .comp-list li {
+    display: grid; grid-template-columns: 12px 1fr auto auto; gap: 8px; align-items: center;
+    padding: 5px 0; font-size: 13px;
+  }
+  .comp-list .swatch { width: 10px; height: 10px; border-radius: 2px; }
+  .comp-list .name { color: var(--text); }
+  .comp-list .pct { color: var(--muted); font-size: 11px; min-width: 36px; text-align: right; }
+  .comp-list .amt { font-variant-numeric: tabular-nums; font-weight: 500; min-width: 70px; text-align: right; }
+
+  .split { padding: 8px 0; }
+  .split .split-row { display: flex; justify-content: space-between; align-items: baseline; padding: 4px 0; font-size: 13px; }
+  .split .split-row .k { color: var(--muted); }
+  .split .split-row .v { font-variant-numeric: tabular-nums; font-weight: 500; }
+  .split .split-bar {
+    display: flex; height: 10px; border-radius: 3px; overflow: hidden;
+    margin: 8px 0; background: var(--panel-2);
+  }
+  .split .split-bar .a { background: var(--accent); }
+  .split .split-bar .b { background: var(--muted); opacity: 0.6; }
+
+  /* HIGHLIGHTS */
+  .highlights { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  @media (max-width: 800px) { .highlights { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 500px) { .highlights { grid-template-columns: 1fr; } }
+  .hl {
+    background: var(--panel-2); border-radius: 8px; padding: 10px 12px;
+  }
+  .hl .hl-k { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+  .hl .hl-v { font-size: 16px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; line-height: 1.25; }
+  .hl .hl-sub { font-size: 11px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+
+  /* TABLE */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 8px; font-weight: 600; color: var(--muted);
+       text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px;
+       border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: 0; }
+  td.amount { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; white-space: nowrap; }
+  td.muted { color: var(--muted); font-size: 12px; }
+  .pill { display: inline-block; padding: 1px 8px; background: var(--panel-2); border-radius: 999px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .table-wrap { overflow-x: auto; }
+
+  /* LIST (subscriptions) */
+  .list { list-style: none; padding: 0; margin: 0; }
+  .list li {
+    display: flex; justify-content: space-between; padding: 7px 0;
+    border-bottom: 1px solid var(--border); font-size: 13px; gap: 8px;
+  }
+  .list li:last-child { border-bottom: 0; }
+  .list .item-name { color: var(--text); font-weight: 500; }
+  .list .item-meta { color: var(--muted); font-size: 11px; }
+  .list .item-amt { font-variant-numeric: tabular-nums; font-weight: 500; }
+
+  .errors { background: rgba(255,122,122,0.08); border: 1px solid var(--bad); color: var(--bad);
+            padding: 8px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
+  .note-banner { background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+                  padding: 8px 12px; border-radius: 8px; font-size: 12px; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <span class="brand">Expense Trends</span>
+  <nav>
+    <a href="index.html">Dashboard</a>
+    <a href="month.html">Month</a>
+    <a class="active" href="year.html">Year</a>
+    <a class="disabled" href="#">Transactions</a>
+  </nav>
+  <select class="year-select" id="yearSelect"></select>
+  <span class="header-spacer"></span>
+  <div class="picker">
+    <span class="filename" id="filename"></span>
+    <label for="fileInput" id="pickerLabel">Load expenses.txt</label>
+    <input type="file" id="fileInput" accept=".txt,.jsonl,.json,application/json">
+  </div>
+</header>
+
+<div id="empty">
+  <p>Pick the file at:</p>
+  <p><code>iCloud Drive › Shortcuts_Data › logs › expenses.txt</code></p>
+</div>
+
+<div id="errors" class="errors" style="display:none"></div>
+
+<main id="main">
+
+  <div id="dataNote" class="note-banner" style="display:none"></div>
+
+  <!-- STATUS — 5 tiles -->
+  <section class="status" id="status"></section>
+
+  <!-- PROSE SUMMARY -->
+  <div class="prose-card" id="prose"></div>
+
+  <!-- MONTHLY BARS -->
+  <section class="card">
+    <h2>Monthly totals <span class="h-sub" id="monthlyBarsSub"></span></h2>
+    <div class="chart-h"><canvas id="monthlyBars"></canvas></div>
+  </section>
+
+  <!-- STACKED AREA -->
+  <section class="card">
+    <h2>Categories over months <span class="h-sub">click a category in the legend to isolate</span></h2>
+    <div class="chart-h-tall"><canvas id="stackedChart"></canvas></div>
+  </section>
+
+  <!-- PER-CATEGORY TREND STRIP -->
+  <section class="card">
+    <h2>Per-category trend <span class="h-sub">sorted by absolute change · biggest movers first</span></h2>
+    <div id="trendStrip"></div>
+  </section>
+
+  <!-- COMPOSITION -->
+  <section class="card">
+    <h2>What kind of spender are you?</h2>
+    <div class="comp-bar" id="compBar"></div>
+    <ul class="comp-list" id="compList"></ul>
+  </section>
+
+  <div class="row-2">
+    <section class="card">
+      <h2>Fixed vs variable</h2>
+      <div class="split" id="fixedVariable"></div>
+    </section>
+    <section class="card">
+      <h2>Essential vs discretionary</h2>
+      <div class="split" id="essDisc"></div>
+    </section>
+  </div>
+
+  <!-- HIGHLIGHTS -->
+  <section class="card">
+    <h2>Highlights</h2>
+    <div class="highlights" id="highlights"></div>
+  </section>
+
+  <!-- SUBSCRIPTION AUDIT -->
+  <section class="card">
+    <h2>Subscription audit <span class="h-sub" id="subsSub"></span></h2>
+    <ul class="list" id="subsList"></ul>
+  </section>
+
+  <!-- TOP 10 -->
+  <section class="card">
+    <h2>Top 10 transactions</h2>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Merchant</th>
+            <th>Category</th>
+            <th>Pmt</th>
+            <th style="text-align:right">Amount</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody id="topTbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+</div>
+
+<script>
+// ─── constants & state ────────────────────────────────────────────────
+const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+const PALETTE = ['#5ea6ff', '#ff9e4f', '#6bd58a', '#c084fc', '#ff7a7a', '#ffd166', '#4ecdc4', '#a8b3c4', '#ff66cc', '#a3e635'];
+
+// Cuts used in Fixed/Variable and Essential/Discretionary
+const FIXED_CATS = new Set(['Bills & Rent', 'Subscriptions']);
+const ESSENTIAL_CATS = new Set(['Bills & Rent', 'Groceries', 'Health', 'Transportation']);
+
+let allEntries = [];
+let selectedYear = null;     // 'all' | 'YYYY'
+let charts = {};
+
+// ─── utilities ────────────────────────────────────────────────────────
+function compactINR(v) {
+  if (v >= 100000) return '₹' + (v / 100000).toFixed(1) + 'L';
+  if (v >= 10000) return '₹' + Math.round(v / 1000) + 'k';
+  if (v >= 1000) return '₹' + (v / 1000).toFixed(1) + 'k';
+  return '₹' + Math.round(v);
+}
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function getCss(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function monthKey(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }
+function fmtMonthShort(ymKey) {
+  const [y, m] = ymKey.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'short' });
+}
+function fmtMonthLong(ymKey) {
+  const [y, m] = ymKey.split('-').map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
+}
+function fmtDateShort(d) { return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' }); }
+
+// Linear regression: returns {slope, intercept, fit[]}
+function linearTrend(ys) {
+  const n = ys.length;
+  if (n < 2) return { slope: 0, intercept: ys[0] || 0, fit: ys.slice() };
+  const xs = ys.map((_, i) => i);
+  const sumX = xs.reduce((s, v) => s + v, 0);
+  const sumY = ys.reduce((s, v) => s + v, 0);
+  const sumXY = xs.reduce((s, v, i) => s + v * ys[i], 0);
+  const sumXX = xs.reduce((s, v) => s + v * v, 0);
+  const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+  const intercept = (sumY - slope * sumX) / n;
+  const fit = xs.map(x => slope * x + intercept);
+  return { slope, intercept, fit };
+}
+
+function sparklineSvg(values, w, h) {
+  if (!values.length) return '';
+  const max = Math.max(...values, 1);
+  const stepX = w / Math.max(values.length - 1, 1);
+  const points = values.map((v, i) => `${i * stepX},${h - (v / max) * h}`).join(' ');
+  const fillPoints = `0,${h} ${points} ${(values.length - 1) * stepX},${h}`;
+  const accent = getCss('--accent');
+  return `
+    <svg width="${w}" height="${h}" style="display:block">
+      <polygon points="${fillPoints}" fill="${accent}" opacity="0.18"/>
+      <polyline points="${points}" fill="none" stroke="${accent}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>
+  `;
+}
+
+// ─── file load + cache ────────────────────────────────────────────────
+function showError(msg) {
+  const box = document.getElementById('errors');
+  box.style.display = 'block';
+  box.textContent = msg;
+}
+document.getElementById('fileInput').addEventListener('change', async (e) => {
+  try {
+    const file = e.target.files[0];
+    if (!file) { showError('No file selected.'); return; }
+    let text;
+    if (file.text) text = await file.text();
+    else text = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result);
+      r.onerror = () => rej(r.error);
+      r.readAsText(file);
+    });
+    if (!text || !text.length) { showError(`File read but empty (${file.size} bytes).`); return; }
+    loadData(text);
+  } catch (err) {
+    showError(`Load failed: ${err.message || err}`);
+  }
+});
+
+function loadData(text) {
+  const entries = [];
+  text.split(/\r?\n/).forEach(line => {
+    const t = line.trim();
+    if (!t) return;
+    try {
+      const o = JSON.parse(t);
+      if (typeof o.amount === 'string') o.amount = parseFloat(o.amount);
+      o._date = new Date(o.ts);
+      o._monthKey = monthKey(o._date);
+      entries.push(o);
+    } catch (err) {}
+  });
+  entries.sort((a, b) => a._date - b._date);
+  allEntries = entries;
+
+  if (!entries.length) {
+    document.getElementById('empty').textContent = 'File loaded but no valid entries.';
+    return;
+  }
+
+  try {
+    localStorage.setItem('expense-data', text);
+    localStorage.setItem('expense-data-ts', new Date().toISOString());
+    updateLastLoaded();
+  } catch (e) {}
+
+  document.getElementById('empty').style.display = 'none';
+  document.getElementById('main').classList.add('loaded');
+
+  populateYearSelect();
+  renderAll();
+}
+
+function updateLastLoaded() {
+  const ts = localStorage.getItem('expense-data-ts');
+  if (!ts) return;
+  const d = new Date(ts);
+  const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+  let lbl;
+  if (mins < 1) lbl = 'just now';
+  else if (mins < 60) lbl = mins + 'm ago';
+  else if (mins < 1440) lbl = Math.floor(mins/60) + 'h ago';
+  else lbl = Math.floor(mins/1440) + 'd ago';
+  document.getElementById('filename').textContent = 'Loaded ' + lbl;
+  document.getElementById('pickerLabel').textContent = 'Refresh';
+}
+
+// ─── year selector ───────────────────────────────────────────────────
+function populateYearSelect() {
+  const years = new Set(allEntries.map(e => e._date.getFullYear()));
+  const sorted = [...years].sort().reverse();
+  const sel = document.getElementById('yearSelect');
+  sel.innerHTML = '<option value="all">All time</option>' +
+    sorted.map(y => `<option value="${y}">${y}</option>`).join('');
+  if (!selectedYear) selectedYear = 'all';
+  sel.value = selectedYear;
+  sel.onchange = () => { selectedYear = sel.value; renderAll(); };
+}
+
+// ─── derived data ────────────────────────────────────────────────────
+function getScopedEntries() {
+  if (selectedYear === 'all') return allEntries.slice();
+  const y = parseInt(selectedYear, 10);
+  return allEntries.filter(e => e._date.getFullYear() === y);
+}
+
+function getMonthlyBuckets(entries) {
+  const map = new Map();
+  entries.forEach(e => {
+    if (!map.has(e._monthKey)) map.set(e._monthKey, []);
+    map.get(e._monthKey).push(e);
+  });
+  return [...map.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([key, ents]) => ({ key, entries: ents, total: ents.reduce((s, e) => s + e.amount, 0) }));
+}
+
+// ─── render orchestration ────────────────────────────────────────────
+function renderAll() {
+  const entries = getScopedEntries();
+  const months = getMonthlyBuckets(entries);
+
+  // Note banner if data is short
+  const note = document.getElementById('dataNote');
+  if (months.length < 6) {
+    note.style.display = '';
+    note.textContent = `Year-scale insights are most reliable with 6+ months of data. You currently have ${months.length} month${months.length === 1 ? '' : 's'} in scope.`;
+  } else {
+    note.style.display = 'none';
+  }
+
+  renderStatus(entries, months);
+  renderProse(entries, months);
+  renderMonthlyBars(months);
+  renderStackedArea(months);
+  renderTrendStrip(entries, months);
+  renderComposition(entries);
+  renderFixedVariable(entries);
+  renderEssDisc(entries);
+  renderHighlights(entries, months);
+  renderSubscriptions(entries, months);
+  renderTop10(entries);
+}
+
+// ─── 1. STATUS — 5 tiles ──────────────────────────────────────────────
+function renderStatus(entries, months) {
+  const total = entries.reduce((s, e) => s + e.amount, 0);
+  const monthsCount = months.length;
+  const monthlyAvg = monthsCount > 0 ? total / monthsCount : 0;
+
+  const totals = months.map(m => m.total);
+  const trend = linearTrend(totals);
+  let trendLabel = '→ flat';
+  let trendCls = '';
+  if (Math.abs(trend.slope) > 500) {
+    if (trend.slope > 0) {
+      trendLabel = `↗ rising ${compactINR(trend.slope)}/mo`;
+      trendCls = 'up';
+    } else {
+      trendLabel = `↘ falling ${compactINR(Math.abs(trend.slope))}/mo`;
+      trendCls = 'down';
+    }
+  }
+
+  let biggest = null, smallest = null;
+  if (months.length) {
+    biggest = months.reduce((b, m) => m.total > b.total ? m : b, months[0]);
+    smallest = months.reduce((b, m) => m.total < b.total ? m : b, months[0]);
+  }
+
+  // Reason for biggest month: top category that contributed the most "above its norm"
+  let biggestReason = '';
+  if (biggest && months.length >= 2) {
+    const others = months.filter(m => m.key !== biggest.key);
+    const otherCatAvg = {};
+    others.forEach(m => {
+      m.entries.forEach(e => {
+        otherCatAvg[e.category] = (otherCatAvg[e.category] || 0) + e.amount;
+      });
+    });
+    Object.keys(otherCatAvg).forEach(c => otherCatAvg[c] /= others.length);
+    const bigCat = {};
+    biggest.entries.forEach(e => { bigCat[e.category] = (bigCat[e.category] || 0) + e.amount; });
+    const exceed = Object.entries(bigCat)
+      .map(([c, v]) => [c, v - (otherCatAvg[c] || 0)])
+      .sort((a, b) => b[1] - a[1])[0];
+    if (exceed && exceed[1] > 1000) biggestReason = `${exceed[0]} drove it`;
+  }
+
+  document.getElementById('status').innerHTML = `
+    <div class="tile">
+      <div class="label">Total spent</div>
+      <div class="value">${INR.format(total)}</div>
+      <div class="sub">${entries.length} transactions · ${monthsCount} month${monthsCount===1?'':'s'}</div>
+    </div>
+    <div class="tile">
+      <div class="label">Monthly average</div>
+      <div class="value">${INR.format(monthlyAvg)}</div>
+      <div class="sub">what you actually feel</div>
+    </div>
+    <div class="tile">
+      <div class="label">Trend direction</div>
+      <div class="value small ${trendCls}">${trendLabel}</div>
+      <div class="sub">linear fit across ${monthsCount} month${monthsCount===1?'':'s'}</div>
+    </div>
+    <div class="tile">
+      <div class="label">Biggest month</div>
+      ${biggest ? `
+        <div class="value small">${fmtMonthShort(biggest.key)} · ${compactINR(biggest.total)}</div>
+        <div class="sub">${biggestReason || ''}</div>
+      ` : '<div class="value small">—</div>'}
+    </div>
+    <div class="tile">
+      <div class="label">Smallest month</div>
+      ${smallest ? `
+        <div class="value small">${fmtMonthShort(smallest.key)} · ${compactINR(smallest.total)}</div>
+      ` : '<div class="value small">—</div>'}
+    </div>
+  `;
+}
+
+// ─── 2. PROSE summary — lifestyle shifts ─────────────────────────────
+function renderProse(entries, months) {
+  const parts = [];
+  const monthsCount = months.length;
+
+  if (monthsCount === 0) {
+    document.getElementById('prose').innerHTML = 'No data in this scope.';
+    return;
+  }
+
+  const total = entries.reduce((s, e) => s + e.amount, 0);
+  const scopeLabel = selectedYear === 'all' ? `Across these ${monthsCount} month${monthsCount===1?'':'s'}` : selectedYear;
+  parts.push(`<b>${scopeLabel}</b>, you spent <b>${INR.format(total)}</b>${monthsCount > 1 ? ` (avg <b>${compactINR(total / monthsCount)}/mo</b>)` : ''}.`);
+
+  // Per-category trends — biggest mover (rising and falling)
+  if (monthsCount >= 3) {
+    const byCatByMonth = {};  // {cat: [v_for_each_month_in_order]}
+    months.forEach((m, i) => {
+      const seen = {};
+      m.entries.forEach(e => { seen[e.category] = (seen[e.category] || 0) + e.amount; });
+      Object.keys(seen).forEach(c => {
+        if (!byCatByMonth[c]) byCatByMonth[c] = new Array(monthsCount).fill(0);
+        byCatByMonth[c][i] = seen[c];
+      });
+      // categories with no spend that month are 0 by initial fill
+    });
+    const catTrends = Object.entries(byCatByMonth).map(([c, arr]) => {
+      const t = linearTrend(arr);
+      return { cat: c, slope: t.slope, total: arr.reduce((a, b) => a + b, 0), first: arr[0], last: arr[arr.length - 1] };
+    }).sort((a, b) => Math.abs(b.slope) - Math.abs(a.slope));
+
+    const rising = catTrends.find(t => t.slope > 0 && Math.abs(t.slope) > 500);
+    if (rising) {
+      const cls = 'pos';
+      parts.push(` <span class="${cls}">${rising.cat}</span> rose <b>${compactINR(rising.slope)}/mo</b>, from ${compactINR(rising.first)} in ${fmtMonthShort(months[0].key)} to ${compactINR(rising.last)} by ${fmtMonthShort(months[monthsCount-1].key)}.`);
+    }
+
+    const falling = catTrends.find(t => t.slope < 0 && Math.abs(t.slope) > 500);
+    if (falling) {
+      const cls = 'neg';
+      parts.push(` <span class="${cls}">${falling.cat}</span> fell <b>${compactINR(Math.abs(falling.slope))}/mo</b> over the same window.`);
+    }
+  }
+
+  // Subscription count change
+  if (monthsCount >= 2) {
+    const subsByMonth = months.map(m => new Set(m.entries.filter(e => e.category === 'Subscriptions').map(e => (e.merchant || '').toLowerCase().trim())));
+    const firstCount = subsByMonth[0].size;
+    const lastCount = subsByMonth[subsByMonth.length - 1].size;
+    if (firstCount !== lastCount) {
+      const dir = lastCount > firstCount ? 'grew' : 'shrank';
+      parts.push(` Subscription count ${dir} from <b>${firstCount}</b> to <b>${lastCount}</b>.`);
+    }
+  }
+
+  // Credit card share over the year
+  const ccTotal = entries.filter(e => e.payment_method === 'credit_card').reduce((s, e) => s + e.amount, 0);
+  if (total > 0 && ccTotal > 0) {
+    const ccPct = (ccTotal / total) * 100;
+    parts.push(` <b>${ccPct.toFixed(0)}%</b> of all spend was on credit card (${compactINR(ccTotal)}).`);
+  }
+
+  document.getElementById('prose').innerHTML = parts.join('');
+}
+
+// ─── 3. MONTHLY BARS with trend line + avg line ──────────────────────
+function renderMonthlyBars(months) {
+  if (charts.monthlyBars) charts.monthlyBars.destroy();
+  const labels = months.map(m => fmtMonthShort(m.key));
+  const totals = months.map(m => m.total);
+  const trend = linearTrend(totals);
+  const avg = totals.length ? totals.reduce((s, v) => s + v, 0) / totals.length : 0;
+
+  document.getElementById('monthlyBarsSub').textContent = totals.length
+    ? `avg ${compactINR(avg)}/mo · ${trend.slope > 500 ? 'rising' : trend.slope < -500 ? 'falling' : 'flat'}`
+    : '';
+
+  const accent = getCss('--accent');
+  const muted = getCss('--muted');
+  const border = getCss('--border');
+  const text = getCss('--text');
+
+  charts.monthlyBars = new Chart(document.getElementById('monthlyBars'), {
+    data: {
+      labels,
+      datasets: [
+        { type: 'bar', label: 'Total', data: totals, backgroundColor: accent, borderRadius: 4, order: 2 },
+        { type: 'line', label: 'Trend', data: trend.fit, borderColor: muted, borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0, order: 1 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => ctx.dataset.label + ': ' + INR.format(ctx.parsed.y) } },
+      },
+      scales: {
+        x: { ticks: { color: muted }, grid: { display: false } },
+        y: { ticks: { color: muted, callback: (v) => compactINR(v) }, grid: { color: border } },
+      },
+    },
+    plugins: [{
+      id: 'avgLine',
+      afterDraw: (chart) => {
+        const { ctx, chartArea: ca, scales: s } = chart;
+        if (!ca || !avg) return;
+        const y = s.y.getPixelForValue(avg);
+        ctx.save();
+        ctx.strokeStyle = text;
+        ctx.globalAlpha = 0.35;
+        ctx.setLineDash([2, 3]);
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(ca.left, y);
+        ctx.lineTo(ca.right, y);
+        ctx.stroke();
+        ctx.globalAlpha = 0.7;
+        ctx.fillStyle = muted;
+        ctx.font = '10px -apple-system, system-ui';
+        ctx.fillText(`avg ${compactINR(avg)}`, ca.right - 64, y - 4);
+        ctx.restore();
+      }
+    }],
+  });
+}
+
+// ─── 4. STACKED AREA — categories over months ────────────────────────
+function renderStackedArea(months) {
+  if (charts.stacked) charts.stacked.destroy();
+  if (!months.length) return;
+
+  const labels = months.map(m => fmtMonthShort(m.key));
+  // Find all categories present (sort by total spend desc — bigger ones drawn first as bottom of stack)
+  const catTotals = {};
+  months.forEach(m => m.entries.forEach(e => { catTotals[e.category] = (catTotals[e.category] || 0) + e.amount; }));
+  const cats = Object.keys(catTotals).sort((a, b) => catTotals[b] - catTotals[a]);
+
+  // Build per-category monthly series
+  const datasets = cats.map((cat, i) => {
+    const data = months.map(m => m.entries.filter(e => e.category === cat).reduce((s, e) => s + e.amount, 0));
+    const color = PALETTE[i % PALETTE.length];
+    return {
+      label: cat,
+      data,
+      backgroundColor: color + 'aa',
+      borderColor: color,
+      borderWidth: 1,
+      fill: true,
+      tension: 0.25,
+      pointRadius: 0,
+      pointHoverRadius: 3,
+    };
+  });
+
+  const muted = getCss('--muted');
+  const border = getCss('--border');
+  const text = getCss('--text');
+
+  charts.stacked = new Chart(document.getElementById('stackedChart'), {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: { color: text, boxWidth: 12, boxHeight: 12, padding: 8, font: { size: 11 } },
+        },
+        tooltip: { callbacks: { label: (ctx) => `${ctx.dataset.label}: ${INR.format(ctx.parsed.y)}` } },
+      },
+      scales: {
+        x: { ticks: { color: muted }, grid: { display: false } },
+        y: { stacked: true, ticks: { color: muted, callback: (v) => compactINR(v) }, grid: { color: border } },
+      },
+    },
+  });
+}
+
+// ─── 5. PER-CATEGORY TREND STRIP ────────────────────────────────────
+function renderTrendStrip(entries, months) {
+  if (!months.length) {
+    document.getElementById('trendStrip').innerHTML = '<div style="color:var(--muted);font-size:13px">No data in scope.</div>';
+    return;
+  }
+  const monthsCount = months.length;
+  const total = entries.reduce((s, e) => s + e.amount, 0);
+
+  const byCatByMonth = {};
+  months.forEach((m, i) => {
+    const seen = {};
+    m.entries.forEach(e => { seen[e.category] = (seen[e.category] || 0) + e.amount; });
+    Object.keys(seen).forEach(c => {
+      if (!byCatByMonth[c]) byCatByMonth[c] = new Array(monthsCount).fill(0);
+      byCatByMonth[c][i] = seen[c];
+    });
+  });
+
+  const rows = Object.entries(byCatByMonth).map(([cat, arr]) => {
+    const t = linearTrend(arr);
+    const catTotal = arr.reduce((a, b) => a + b, 0);
+    return {
+      cat,
+      values: arr,
+      slope: t.slope,
+      total: catTotal,
+      pct: total > 0 ? (catTotal / total) * 100 : 0,
+    };
+  }).sort((a, b) => Math.abs(b.slope) - Math.abs(a.slope));
+
+  document.getElementById('trendStrip').innerHTML = rows.map(r => {
+    let arrow = '→ flat', cls = 'flat';
+    if (Math.abs(r.slope) > 200) {
+      if (r.slope > 0) { arrow = `↗ +${compactINR(r.slope)}/mo`; cls = 'up'; }
+      else { arrow = `↘ -${compactINR(Math.abs(r.slope))}/mo`; cls = 'down'; }
+    }
+    return `
+      <div class="trend-row">
+        <div class="name">${escapeHtml(r.cat)}</div>
+        <div class="spark">${sparklineSvg(r.values, 100, 24)}</div>
+        <div class="total">${compactINR(r.total)}</div>
+        <div class="trend-arrow ${cls}">${arrow}</div>
+        <div class="pct">${r.pct.toFixed(0)}%</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ─── 6. COMPOSITION horizontal stacked bar ───────────────────────────
+function renderComposition(entries) {
+  const cats = {};
+  entries.forEach(e => { cats[e.category] = (cats[e.category] || 0) + e.amount; });
+  const total = Object.values(cats).reduce((s, v) => s + v, 0);
+  const sorted = Object.entries(cats).sort((a, b) => b[1] - a[1]);
+
+  const bar = document.getElementById('compBar');
+  if (total === 0) { bar.innerHTML = ''; document.getElementById('compList').innerHTML = '<li style="color:var(--muted)">No data</li>'; return; }
+
+  bar.innerHTML = sorted.map(([cat, v], i) => {
+    const w = (v / total) * 100;
+    return `<div title="${escapeHtml(cat)}: ${INR.format(v)} (${w.toFixed(0)}%)" style="width:${w}%;background:${PALETTE[i % PALETTE.length]}"></div>`;
+  }).join('');
+
+  document.getElementById('compList').innerHTML = sorted.map(([cat, v], i) => {
+    const pct = (v / total) * 100;
+    return `
+      <li>
+        <div class="swatch" style="background:${PALETTE[i % PALETTE.length]}"></div>
+        <div class="name">${escapeHtml(cat)}</div>
+        <div class="amt">${INR.format(v)}</div>
+        <div class="pct">${pct.toFixed(0)}%</div>
+      </li>
+    `;
+  }).join('');
+}
+
+// ─── 7. FIXED vs VARIABLE ────────────────────────────────────────────
+function renderFixedVariable(entries) {
+  let fixed = 0, variable = 0;
+  entries.forEach(e => {
+    if (FIXED_CATS.has(e.category)) fixed += e.amount;
+    else variable += e.amount;
+  });
+  const total = fixed + variable;
+  if (total === 0) { document.getElementById('fixedVariable').innerHTML = '<div style="color:var(--muted)">No data</div>'; return; }
+  const fPct = (fixed / total) * 100;
+  const vPct = (variable / total) * 100;
+  document.getElementById('fixedVariable').innerHTML = `
+    <div class="split-bar">
+      <div class="a" style="width:${fPct}%"></div>
+      <div class="b" style="width:${vPct}%"></div>
+    </div>
+    <div class="split-row"><span class="k">Fixed (Bills & Rent + Subscriptions)</span><span class="v">${INR.format(fixed)} · ${fPct.toFixed(0)}%</span></div>
+    <div class="split-row"><span class="k">Variable (everything else)</span><span class="v">${INR.format(variable)} · ${vPct.toFixed(0)}%</span></div>
+    <div class="split-row" style="margin-top:6px;color:var(--muted);font-size:12px">${vPct.toFixed(0)}% of your spend is variable — that's the part you can actually move.</div>
+  `;
+}
+
+// ─── 8. ESSENTIAL vs DISCRETIONARY ───────────────────────────────────
+function renderEssDisc(entries) {
+  let ess = 0, disc = 0;
+  entries.forEach(e => {
+    if (ESSENTIAL_CATS.has(e.category)) ess += e.amount;
+    else disc += e.amount;
+  });
+  const total = ess + disc;
+  if (total === 0) { document.getElementById('essDisc').innerHTML = '<div style="color:var(--muted)">No data</div>'; return; }
+  const ePct = (ess / total) * 100;
+  const dPct = (disc / total) * 100;
+  document.getElementById('essDisc').innerHTML = `
+    <div class="split-bar">
+      <div class="a" style="width:${ePct}%"></div>
+      <div class="b" style="width:${dPct}%"></div>
+    </div>
+    <div class="split-row"><span class="k">Essential (Bills, Rent, Groceries, Health, Transport)</span><span class="v">${INR.format(ess)} · ${ePct.toFixed(0)}%</span></div>
+    <div class="split-row"><span class="k">Discretionary (Food, Recreation, Clothing, Subs, Person, Misc)</span><span class="v">${INR.format(disc)} · ${dPct.toFixed(0)}%</span></div>
+  `;
+}
+
+// ─── 9. HIGHLIGHTS ────────────────────────────────────────────────────
+function renderHighlights(entries, months) {
+  if (!entries.length) { document.getElementById('highlights').innerHTML = '<div style="color:var(--muted)">No data</div>'; return; }
+
+  // Highest spending day
+  const byDay = {};
+  entries.forEach(e => {
+    const k = e._date.toISOString().slice(0, 10);
+    byDay[k] = (byDay[k] || 0) + e.amount;
+  });
+  const [topDayKey, topDayAmt] = Object.entries(byDay).sort((a, b) => b[1] - a[1])[0];
+  const topDay = new Date(topDayKey + 'T00:00:00');
+
+  // Longest zero-spend streak
+  let firstDate = entries[0]._date;
+  let lastDate = entries[entries.length - 1]._date;
+  let cur = new Date(firstDate.getFullYear(), firstDate.getMonth(), firstDate.getDate());
+  let longest = 0, currentStreak = 0;
+  while (cur <= lastDate) {
+    const k = cur.toISOString().slice(0, 10);
+    if (!byDay[k]) {
+      currentStreak += 1;
+      if (currentStreak > longest) longest = currentStreak;
+    } else {
+      currentStreak = 0;
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  // Total zero-spend days
+  const totalZero = (() => {
+    let cur2 = new Date(firstDate.getFullYear(), firstDate.getMonth(), firstDate.getDate());
+    let n = 0;
+    while (cur2 <= lastDate) {
+      const k = cur2.toISOString().slice(0, 10);
+      if (!byDay[k]) n += 1;
+      cur2.setDate(cur2.getDate() + 1);
+    }
+    return n;
+  })();
+
+  // Most-visited merchant by count
+  const merchCount = {};
+  entries.forEach(e => {
+    const k = (e.merchant || '').toLowerCase().trim();
+    if (!k) return;
+    if (!merchCount[k]) merchCount[k] = { name: e.merchant, count: 0, total: 0 };
+    merchCount[k].count += 1;
+    merchCount[k].total += e.amount;
+  });
+  const merchSorted = Object.values(merchCount).sort((a, b) => b.count - a.count);
+  const topMerch = merchSorted[0];
+  const loyalty = merchSorted.filter(m => m.count >= 10).length;
+
+  // Day-of-week peak
+  const dow = new Array(7).fill(0);
+  const dowCount = new Array(7).fill(0);
+  entries.forEach(e => {
+    const d = e._date.getDay() === 0 ? 6 : e._date.getDay() - 1;
+    dow[d] += e.amount;
+    dowCount[d] += 1;
+  });
+  const dowAvg = dow.map((v, i) => dowCount[i] ? v / dowCount[i] : 0);
+  const peakDow = dowAvg.indexOf(Math.max(...dowAvg));
+  const dowNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  document.getElementById('highlights').innerHTML = `
+    <div class="hl">
+      <div class="hl-k">Highest spending day</div>
+      <div class="hl-v">${INR.format(topDayAmt)}</div>
+      <div class="hl-sub">${topDay.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' })}</div>
+    </div>
+    <div class="hl">
+      <div class="hl-k">Longest zero-spend streak</div>
+      <div class="hl-v">${longest} day${longest===1?'':'s'}</div>
+      <div class="hl-sub">${totalZero} zero-spend days total</div>
+    </div>
+    <div class="hl">
+      <div class="hl-k">Day-of-week peak</div>
+      <div class="hl-v">${dowNames[peakDow]}</div>
+      <div class="hl-sub">avg ${compactINR(dowAvg[peakDow])} per ${dowNames[peakDow]}</div>
+    </div>
+    <div class="hl">
+      <div class="hl-k">Most-visited merchant</div>
+      <div class="hl-v">${escapeHtml(topMerch?.name || '—')}</div>
+      <div class="hl-sub">${topMerch?.count || 0} visits · ${compactINR(topMerch?.total || 0)} total</div>
+    </div>
+    <div class="hl">
+      <div class="hl-k">Merchant loyalty</div>
+      <div class="hl-v">${loyalty}</div>
+      <div class="hl-sub">merchants used 10+ times</div>
+    </div>
+    <div class="hl">
+      <div class="hl-k">Months in scope</div>
+      <div class="hl-v">${months.length}</div>
+      <div class="hl-sub">${months.length ? fmtMonthShort(months[0].key) + ' → ' + fmtMonthShort(months[months.length - 1].key) : ''}</div>
+    </div>
+  `;
+}
+
+// ─── 10. SUBSCRIPTIONS audit ────────────────────────────────────────
+function renderSubscriptions(entries, months) {
+  const subs = {};
+  entries.filter(e => e.category === 'Subscriptions').forEach(e => {
+    const k = (e.merchant || '').toLowerCase().trim();
+    if (!k) return;
+    if (!subs[k]) subs[k] = { name: e.merchant, total: 0, count: 0, firstDate: e._date, lastDate: e._date };
+    subs[k].total += e.amount;
+    subs[k].count += 1;
+    if (e._date < subs[k].firstDate) subs[k].firstDate = e._date;
+    if (e._date > subs[k].lastDate) subs[k].lastDate = e._date;
+  });
+  const rows = Object.values(subs).sort((a, b) => b.total - a.total);
+  const total = rows.reduce((s, r) => s + r.total, 0);
+  const avg = rows.length ? total / rows.length : 0;
+
+  // "New" = first appearance is within scope's first month being later than scope start
+  const scopeStart = months.length ? new Date(months[0].key + '-01') : null;
+  const halfwayPoint = months.length >= 2 ? new Date(months[Math.floor(months.length / 2)].key + '-01') : null;
+
+  document.getElementById('subsSub').textContent = rows.length
+    ? `${rows.length} services · ${compactINR(total)} total · avg ${compactINR(avg)}/service`
+    : '';
+
+  document.getElementById('subsList').innerHTML = rows.length === 0
+    ? '<li style="color:var(--muted);justify-content:center;padding:14px 0">No subscriptions in scope.</li>'
+    : rows.map(r => {
+        const isNewish = halfwayPoint && r.firstDate >= halfwayPoint;
+        return `
+          <li>
+            <div>
+              <div class="item-name">${escapeHtml(r.name)}${isNewish ? ' <span class="pill" style="background:var(--accent-soft);color:var(--accent)">new</span>' : ''}</div>
+              <div class="item-meta">${r.count} charge${r.count===1?'':'s'} · first ${fmtDateShort(r.firstDate)} · last ${fmtDateShort(r.lastDate)}</div>
+            </div>
+            <div class="item-amt">${INR.format(r.total)}</div>
+          </li>
+        `;
+      }).join('');
+}
+
+// ─── 11. TOP 10 transactions ────────────────────────────────────────
+function renderTop10(entries) {
+  const rows = entries.slice().sort((a, b) => b.amount - a.amount).slice(0, 10);
+  const tbody = document.getElementById('topTbody');
+  tbody.innerHTML = rows.length === 0
+    ? '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">No data.</td></tr>'
+    : rows.map(e => `
+        <tr>
+          <td class="muted">${fmtDateShort(e._date)}</td>
+          <td>${escapeHtml(e.merchant || '')}</td>
+          <td><span class="pill">${escapeHtml(e.category || '')}</span></td>
+          <td class="muted">${escapeHtml(e.payment_method || '')}</td>
+          <td class="amount">${INR.format(e.amount)}</td>
+          <td class="muted">${escapeHtml(e.note || '')}</td>
+        </tr>
+      `).join('');
+}
+
+// ─── INIT ────────────────────────────────────────────────────────────
+(function init() {
+  try {
+    const cached = localStorage.getItem('expense-data');
+    if (cached && cached.length) loadData(cached);
+  } catch (e) {}
+})();
+</script>
+
+</body>
+</html>
