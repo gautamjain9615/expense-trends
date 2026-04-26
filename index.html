@@ -78,8 +78,8 @@
   .tile .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
   .tile .value { font-size: 28px; font-weight: 700; margin-top: 6px; font-variant-numeric: tabular-nums; line-height: 1.1; }
   .tile .sub { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
-  .tile .sub.up { color: var(--bad); }
-  .tile .sub.down { color: var(--good); }
+  .tile .sub.up, .tile .sub span.up { color: var(--bad); }
+  .tile .sub.down, .tile .sub span.down { color: var(--good); }
   .tile .spark { position: absolute; right: 14px; top: 14px; }
   .tile .topcat-name { font-size: 17px; font-weight: 600; line-height: 1.2; margin-top: 6px; }
   .tile .topcat-amount { font-size: 22px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
@@ -159,16 +159,17 @@
   .catbar { display: grid; grid-template-columns: 130px 1fr 90px; align-items: center; gap: 10px; font-size: 13px; }
   @media (max-width: 600px) { .catbar { grid-template-columns: 100px 1fr 80px; } }
   .catbar .name { color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .catbar .bars { display: grid; gap: 3px; }
+  .catbar .bars { display: grid; gap: 2px; }
   .catbar .bar {
-    height: 10px; border-radius: 3px; background: var(--panel-2); position: relative; overflow: hidden;
+    height: 9px; border-radius: 3px; background: var(--panel-2); position: relative; overflow: hidden;
   }
   .catbar .bar .fill {
     position: absolute; top: 0; left: 0; height: 100%; border-radius: 3px;
     background: var(--accent);
   }
-  .catbar .bar.last .fill { background: var(--muted); opacity: 0.6; }
-  .catbar .bar .lbl { position: absolute; right: 4px; top: -1px; font-size: 9px; color: var(--text); line-height: 12px; font-weight: 500; }
+  .catbar .bar.last .fill { background: var(--muted); opacity: 0.7; }
+  .catbar .bar.prev2 .fill { background: var(--muted); opacity: 0.35; }
+  .catbar .bar .lbl { position: absolute; right: 4px; top: -1px; font-size: 9px; color: var(--text); line-height: 11px; font-weight: 500; }
   .catbar .delta { font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
   .catbar .delta.up { color: var(--bad); }
   .catbar .delta.down { color: var(--good); }
@@ -260,11 +261,11 @@
   <!-- CATEGORY BARS + CUMULATIVE LINE -->
   <div class="row-2">
     <section class="card">
-      <h2>Categories — this vs last month</h2>
+      <h2>Categories — last 3 months <span class="h-sub" id="catBarsSub"></span></h2>
       <div class="catbars" id="catBars"></div>
     </section>
     <section class="card">
-      <h2>Cumulative spend — this vs last month</h2>
+      <h2>Cumulative spend — last 3 months</h2>
       <div class="chart-h"><canvas id="cumChart"></canvas></div>
     </section>
   </div>
@@ -511,26 +512,38 @@ function renderStatus(entries) {
     .filter(e => e._date >= monthStart && e._date < tomorrow)
     .reduce((s, e) => s + (e.amount || 0), 0);
 
-  // Last month, same day-of-month period
-  const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const lastMonthDays = daysInMonth(lastMonth);
-  const cappedDay = Math.min(day, lastMonthDays);
-  const lastMonthSamePeriodEnd = new Date(lastMonth.getFullYear(), lastMonth.getMonth(), cappedDay + 1);
-  const lastMonthSamePeriod = entries
-    .filter(e => e._date >= lastMonth && e._date < lastMonthSamePeriodEnd)
-    .reduce((s, e) => s + (e.amount || 0), 0);
+  // Helper: sum entries for [start, end-of-cappedDay-of-that-month)
+  const samePeriodSum = (monthStart) => {
+    const dim = daysInMonth(monthStart);
+    const cappedDay = Math.min(day, dim);
+    const end = new Date(monthStart.getFullYear(), monthStart.getMonth(), cappedDay + 1);
+    return entries
+      .filter(e => e._date >= monthStart && e._date < end)
+      .reduce((s, e) => s + (e.amount || 0), 0);
+  };
 
-  let cmpStr, cmpClass = '';
-  if (lastMonthSamePeriod === 0) {
-    cmpStr = 'no data for last month';
-  } else {
-    const pct = ((thisMonthSoFar - lastMonthSamePeriod) / lastMonthSamePeriod) * 100;
-    if (Math.abs(pct) < 1) cmpStr = 'same as last month at this point';
-    else {
-      cmpStr = `${Math.abs(pct).toFixed(0)}% ${pct > 0 ? 'more' : 'less'} than last month at this point`;
-      cmpClass = pct > 0 ? 'up' : 'down';
-    }
-  }
+  const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prev2Month = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  const lastMonthSamePeriod = samePeriodSum(lastMonth);
+  const prev2MonthSamePeriod = samePeriodSum(prev2Month);
+
+  const fmtMonth = (d) => d.toLocaleDateString('en-IN', { month: 'short' });
+  const cmpFor = (ref) => {
+    if (ref === 0) return null;
+    const pct = ((thisMonthSoFar - ref) / ref) * 100;
+    return { pct, cls: pct > 0.5 ? 'up' : pct < -0.5 ? 'down' : '' };
+  };
+  const cmpLast = cmpFor(lastMonthSamePeriod);
+  const cmpPrev2 = cmpFor(prev2MonthSamePeriod);
+  const fmtCmp = (c, label) => {
+    if (!c) return `${label}: —`;
+    const sign = c.pct > 0 ? '↑' : c.pct < 0 ? '↓' : '~';
+    return `${sign} ${Math.abs(c.pct).toFixed(0)}% vs ${label}`;
+  };
+
+  // Inline-color the primary (vs last month) comparison; the second one is plain text.
+  const cmpStr = `<span class="${cmpLast?.cls || ''}">${fmtCmp(cmpLast, fmtMonth(lastMonth))}</span> · ${fmtCmp(cmpPrev2, fmtMonth(prev2Month))}`;
+  const cmpClass = '';  // moved into the inline span above
 
   // Daily burn
   const dailyBurn = thisMonthSoFar / day;
@@ -782,22 +795,35 @@ function renderCategoryBars(entries) {
   const now = new Date();
   const monthStart = startOfMonth(now);
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prev2MonthStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
 
   const thisMonthCats = {};
   const lastMonthCats = {};
+  const prev2MonthCats = {};
   entries.forEach(e => {
     if (e._date >= monthStart) thisMonthCats[e.category] = (thisMonthCats[e.category] || 0) + (e.amount || 0);
     else if (e._date >= lastMonthStart) lastMonthCats[e.category] = (lastMonthCats[e.category] || 0) + (e.amount || 0);
+    else if (e._date >= prev2MonthStart) prev2MonthCats[e.category] = (prev2MonthCats[e.category] || 0) + (e.amount || 0);
   });
 
-  const allCats = new Set([...Object.keys(thisMonthCats), ...Object.keys(lastMonthCats)]);
+  const allCats = new Set([
+    ...Object.keys(thisMonthCats), ...Object.keys(lastMonthCats), ...Object.keys(prev2MonthCats),
+  ]);
   const rows = [...allCats].map(cat => ({
     cat,
     now: thisMonthCats[cat] || 0,
     prev: lastMonthCats[cat] || 0,
-  })).sort((a, b) => Math.max(b.now, b.prev) - Math.max(a.now, a.prev));
+    prev2: prev2MonthCats[cat] || 0,
+  })).sort((a, b) => Math.max(b.now, b.prev, b.prev2) - Math.max(a.now, a.prev, a.prev2));
 
-  const max = Math.max(...rows.map(r => Math.max(r.now, r.prev)), 1);
+  const max = Math.max(...rows.map(r => Math.max(r.now, r.prev, r.prev2)), 1);
+
+  // Render legend chip in the section sub-heading
+  const fmtMo = (d) => d.toLocaleDateString('en-IN', { month: 'short' });
+  document.getElementById('catBarsSub').innerHTML =
+    `<span style="display:inline-block;width:8px;height:8px;background:var(--accent);border-radius:2px;margin-right:4px"></span>${fmtMo(now)}` +
+    `&nbsp;&nbsp;<span style="display:inline-block;width:8px;height:8px;background:var(--muted);opacity:0.7;border-radius:2px;margin-right:4px"></span>${fmtMo(lastMonthStart)}` +
+    `&nbsp;&nbsp;<span style="display:inline-block;width:8px;height:8px;background:var(--muted);opacity:0.35;border-radius:2px;margin-right:4px"></span>${fmtMo(prev2MonthStart)}`;
 
   document.getElementById('catBars').innerHTML = rows.length === 0
     ? '<div style="color:var(--muted);font-size:13px;padding:8px 0">No data this month yet.</div>'
@@ -814,12 +840,14 @@ function renderCategoryBars(entries) {
         }
         const wNow = (r.now / max) * 100;
         const wPrev = (r.prev / max) * 100;
+        const wPrev2 = (r.prev2 / max) * 100;
         return `
           <div class="catbar">
             <div class="name" title="${escapeHtml(r.cat)}">${escapeHtml(r.cat)}</div>
             <div class="bars">
               <div class="bar"><div class="fill" style="width:${wNow}%"></div><div class="lbl">${r.now > 0 ? compactINR(r.now) : ''}</div></div>
               <div class="bar last"><div class="fill" style="width:${wPrev}%"></div><div class="lbl" style="color:var(--muted)">${r.prev > 0 ? compactINR(r.prev) : ''}</div></div>
+              <div class="bar prev2"><div class="fill" style="width:${wPrev2}%"></div><div class="lbl" style="color:var(--muted);opacity:0.7">${r.prev2 > 0 ? compactINR(r.prev2) : ''}</div></div>
             </div>
             <div class="delta ${deltaCls}">${delta}</div>
           </div>
@@ -835,39 +863,53 @@ function renderCumulative(entries) {
   const dim = daysInMonth(now);
   const monthStart = startOfMonth(now);
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const prev2MonthStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
   const lastMonthEnd = monthStart;
+  const prev2MonthEnd = lastMonthStart;
   const lastDim = daysInMonth(lastMonthStart);
+  const prev2Dim = daysInMonth(prev2MonthStart);
 
   const thisDaily = new Array(dim + 1).fill(0);
   const lastDaily = new Array(lastDim + 1).fill(0);
+  const prev2Daily = new Array(prev2Dim + 1).fill(0);
   entries.forEach(e => {
     if (e._date >= monthStart && e._date < endOfMonth(now)) {
-      const d = e._date.getDate();
-      thisDaily[d] += (e.amount || 0);
+      thisDaily[e._date.getDate()] += (e.amount || 0);
     } else if (e._date >= lastMonthStart && e._date < lastMonthEnd) {
-      const d = e._date.getDate();
-      lastDaily[d] += (e.amount || 0);
+      lastDaily[e._date.getDate()] += (e.amount || 0);
+    } else if (e._date >= prev2MonthStart && e._date < prev2MonthEnd) {
+      prev2Daily[e._date.getDate()] += (e.amount || 0);
     }
   });
   // Cumulate
+  const totalDays = Math.max(dim, lastDim, prev2Dim);
   const thisCum = [];
   const lastCum = [];
+  const prev2Cum = [];
   let acc = 0;
-  for (let i = 1; i <= dim; i++) {
-    if (i <= today.getDate()) { acc += thisDaily[i]; thisCum.push(acc); }
+  for (let i = 1; i <= totalDays; i++) {
+    if (i <= dim && i <= today.getDate()) { acc += thisDaily[i]; thisCum.push(acc); }
+    else if (i > dim) thisCum.push(null);
     else thisCum.push(null);
   }
   acc = 0;
-  for (let i = 1; i <= Math.max(dim, lastDim); i++) {
+  for (let i = 1; i <= totalDays; i++) {
     if (i <= lastDim) { acc += lastDaily[i]; lastCum.push(acc); }
     else lastCum.push(null);
   }
-  const labels = Array.from({ length: Math.max(dim, lastDim) }, (_, i) => String(i + 1));
+  acc = 0;
+  for (let i = 1; i <= totalDays; i++) {
+    if (i <= prev2Dim) { acc += prev2Daily[i]; prev2Cum.push(acc); }
+    else prev2Cum.push(null);
+  }
+  const labels = Array.from({ length: totalDays }, (_, i) => String(i + 1));
 
   const accent = getCss('--accent');
   const muted = getCss('--muted');
   const border = getCss('--border');
   const text = getCss('--text');
+
+  const fmtMo = (d) => d.toLocaleDateString('en-IN', { month: 'short' });
 
   charts.cum = new Chart(document.getElementById('cumChart'), {
     type: 'line',
@@ -875,7 +917,7 @@ function renderCumulative(entries) {
       labels,
       datasets: [
         {
-          label: 'This month',
+          label: fmtMo(now),
           data: thisCum,
           borderColor: accent,
           backgroundColor: accent + '22',
@@ -887,15 +929,26 @@ function renderCumulative(entries) {
           borderWidth: 2,
         },
         {
-          label: 'Last month',
+          label: fmtMo(lastMonthStart),
           data: lastCum,
           borderColor: muted,
-          borderDash: [4, 4],
+          borderDash: [5, 4],
           fill: false,
           tension: 0.2,
           pointRadius: 0,
           pointHoverRadius: 3,
           borderWidth: 1.5,
+        },
+        {
+          label: fmtMo(prev2MonthStart),
+          data: prev2Cum,
+          borderColor: muted,
+          borderDash: [2, 3],
+          fill: false,
+          tension: 0.2,
+          pointRadius: 0,
+          pointHoverRadius: 3,
+          borderWidth: 1,
         },
       ],
     },
