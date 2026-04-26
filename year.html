@@ -112,7 +112,7 @@
   /* TREND STRIP */
   .trend-row {
     display: grid;
-    grid-template-columns: 130px 1fr 80px 90px 50px;
+    grid-template-columns: 130px minmax(0, 1fr) 80px 90px 50px;
     align-items: center;
     gap: 12px;
     padding: 8px 0;
@@ -120,17 +120,32 @@
     font-size: 13px;
   }
   .trend-row:last-child { border-bottom: 0; }
-  @media (max-width: 700px) {
-    .trend-row { grid-template-columns: 100px 1fr 70px 80px 40px; gap: 8px; font-size: 12px; }
-  }
-  .trend-row .name { color: var(--text); font-weight: 500; }
-  .trend-row .spark { display: flex; align-items: center; }
+  .trend-row .name { color: var(--text); font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .trend-row .spark { display: flex; align-items: center; min-width: 0; }
   .trend-row .total { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
-  .trend-row .trend-arrow { text-align: right; font-variant-numeric: tabular-nums; font-size: 11px; }
+  .trend-row .trend-arrow { text-align: right; font-variant-numeric: tabular-nums; font-size: 11px; white-space: nowrap; }
   .trend-row .trend-arrow.up { color: var(--bad); }
   .trend-row .trend-arrow.down { color: var(--good); }
   .trend-row .trend-arrow.flat { color: var(--muted); }
   .trend-row .pct { text-align: right; color: var(--muted); font-size: 11px; }
+
+  @media (max-width: 700px) {
+    /* Two-row layout on phones: name + total + trend on top, full-width sparkline below.
+       % column is dropped — total and trend carry the signal. */
+    .trend-row {
+      grid-template-columns: 1fr auto auto;
+      grid-template-areas:
+        "name  total trend"
+        "spark spark spark";
+      gap: 2px 10px;
+      padding: 10px 0;
+    }
+    .trend-row .name  { grid-area: name; }
+    .trend-row .total { grid-area: total; }
+    .trend-row .trend-arrow { grid-area: trend; }
+    .trend-row .spark { grid-area: spark; min-width: 0; }
+    .trend-row .pct   { display: none; }
+  }
 
   /* COMPOSITION */
   .comp-bar {
@@ -368,10 +383,12 @@ function sparklineSvg(values, w, h) {
   const points = values.map((v, i) => `${i * stepX},${h - (v / max) * h}`).join(' ');
   const fillPoints = `0,${h} ${points} ${(values.length - 1) * stepX},${h}`;
   const accent = getCss('--accent');
+  // Responsive: use viewBox so the SVG scales to its container width
+  // (preserveAspectRatio="none" lets it compress horizontally without forcing aspect ratio).
   return `
-    <svg width="${w}" height="${h}" style="display:block">
+    <svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" style="display:block">
       <polygon points="${fillPoints}" fill="${accent}" opacity="0.18"/>
-      <polyline points="${points}" fill="none" stroke="${accent}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+      <polyline points="${points}" fill="none" stroke="${accent}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
     </svg>
   `;
 }
