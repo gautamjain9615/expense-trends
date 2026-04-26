@@ -30,8 +30,10 @@
   .wrap { max-width: 1280px; margin: 0 auto; padding: 20px; }
 
   /* HEADER */
-  header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+  header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 8px; }
   .brand { font-size: 18px; font-weight: 600; }
+  .greeting { font-size: 14px; color: var(--muted); margin: 0 0 16px 2px; }
+  .greeting b { color: var(--text); font-weight: 600; }
   nav { display: flex; gap: 4px; }
   nav a {
     padding: 6px 12px; border-radius: 7px; font-size: 13px; font-weight: 500;
@@ -274,6 +276,8 @@
   </div>
 </header>
 
+<div class="greeting" id="greeting" style="display:none"></div>
+
 <div id="empty">
   <p>Pick the file at:</p>
   <p><code>iCloud Drive › Shortcuts_Data › logs › expenses.txt</code></p>
@@ -392,6 +396,27 @@
 <script>
 // ─── constants & state ────────────────────────────────────────────────
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
+const CATEGORY_EMOJI = {
+  'Food & Beverage': '🍽',
+  'Groceries': '🛒',
+  'Transportation': '🚕',
+  'Bills & Rent': '🏠',
+  'Subscriptions': '📺',
+  'Recreation': '🎬',
+  'Clothing': '👕',
+  'Health': '💊',
+  'Person': '👤',
+  'Misc': '📦',
+};
+function withEmoji(cat) { return (CATEGORY_EMOJI[cat] || '·') + ' ' + (cat || ''); }
+function timeOfDayGreeting() {
+  const h = new Date().getHours();
+  if (h < 5) return 'Late night.';
+  if (h < 12) return 'Good morning.';
+  if (h < 17) return 'Good afternoon.';
+  if (h < 21) return 'Good evening.';
+  return 'Late night.';
+}
 const PAYMENT_FILTERS = [
   { id: 'all', label: 'All' },
   { id: 'upi', label: 'UPI' },
@@ -502,6 +527,11 @@ function loadData(text) {
 
   document.getElementById('empty').style.display = 'none';
   document.getElementById('main').classList.add('loaded');
+
+  // Greeting
+  const greetingEl = document.getElementById('greeting');
+  greetingEl.style.display = '';
+  greetingEl.innerHTML = `<b>${timeOfDayGreeting()}</b> Here's where your money's gone.`;
 
   selectedDayKey = dateKey(new Date());  // default today
   renderAll();
@@ -642,7 +672,7 @@ function renderStatus(entries) {
     <div class="tile">
       <div class="label">Top category</div>
       ${topCat ? `
-        <div class="topcat-name">${escapeHtml(topCat[0])}</div>
+        <div class="topcat-name">${escapeHtml(withEmoji(topCat[0]))}</div>
         <div class="topcat-amount">${INR.format(topCat[1])}</div>
         <div class="sub">${topCatPct}% of this month</div>
       ` : '<div class="value" style="font-size:18px;color:var(--muted)">—</div>'}
@@ -857,7 +887,7 @@ function renderDayDetail(entries) {
           <li>
             <span class="merch">${escapeHtml(e.merchant || '')}</span>
             <span class="badge ${escapeHtml(e.payment_method || '')}">${escapeHtml(e.payment_method || '')}</span>
-            <span class="pill">${escapeHtml(e.category || '')}</span>
+            <span class="pill">${escapeHtml(withEmoji(e.category || ''))}</span>
             <span class="day-amt">${INR.format(e.amount || 0)}</span>
           </li>
         `).join('') + '</ul>'
@@ -918,7 +948,7 @@ function renderCategoryBars(entries) {
         const wPrev2 = (r.prev2 / max) * 100;
         return `
           <div class="catbar">
-            <div class="name" title="${escapeHtml(r.cat)}">${escapeHtml(r.cat)}</div>
+            <div class="name" title="${escapeHtml(r.cat)}">${escapeHtml(withEmoji(r.cat))}</div>
             <div class="bars">
               <div class="bar"><div class="fill" style="width:${wNow}%"></div><div class="lbl">${r.now > 0 ? compactINR(r.now) : ''}</div></div>
               <div class="bar last"><div class="fill" style="width:${wPrev}%"></div><div class="lbl" style="color:var(--muted)">${r.prev > 0 ? compactINR(r.prev) : ''}</div></div>
@@ -1085,7 +1115,7 @@ function renderTransactionsTable(entries) {
     <tr class="tx-row" data-idx="${i}">
       <td class="muted">${escapeHtml(fmtDateTime(e._date))}</td>
       <td>${escapeHtml(e.merchant || '')}</td>
-      <td><span class="pill">${escapeHtml(e.category || '')}</span></td>
+      <td><span class="pill">${escapeHtml(withEmoji(e.category || ''))}</span></td>
       <td><span class="badge ${escapeHtml(e.payment_method || '')}">${escapeHtml((e.payment_method || '').replace('_card',''))}</span></td>
       <td><span class="badge">${escapeHtml(e.source || '')}</span></td>
       <td class="amount">${INR.format(e.amount || 0)}</td>

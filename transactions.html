@@ -134,9 +134,9 @@
 
   .tx-row {
     display: grid;
-    grid-template-columns: 60px minmax(120px, 1fr) auto auto;
+    grid-template-columns: 64px minmax(120px, 1fr) minmax(0, 1.7fr) 90px;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     padding: 8px 6px;
     border-bottom: 1px solid var(--border);
     cursor: pointer;
@@ -327,6 +327,19 @@
 // ─── constants & state ────────────────────────────────────────────────
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
 const CATEGORIES = ['Food & Beverage', 'Groceries', 'Transportation', 'Bills & Rent', 'Subscriptions', 'Recreation', 'Clothing', 'Health', 'Person', 'Misc'];
+const CATEGORY_EMOJI = {
+  'Food & Beverage': '🍽',
+  'Groceries': '🛒',
+  'Transportation': '🚕',
+  'Bills & Rent': '🏠',
+  'Subscriptions': '📺',
+  'Recreation': '🎬',
+  'Clothing': '👕',
+  'Health': '💊',
+  'Person': '👤',
+  'Misc': '📦',
+};
+function withEmoji(cat) { return (CATEGORY_EMOJI[cat] || '·') + ' ' + (cat || ''); }
 const PAYMENT_METHODS = [
   { id: 'upi', label: 'UPI' },
   { id: 'credit_card', label: 'Credit' },
@@ -745,13 +758,13 @@ function renderRow(e) {
     <div class="tx-row ${expandedIdx === e._idx ? 'expanded' : ''} ${edited ? 'edited' : ''}" data-idx="${e._idx}">
       <div class="time">${escapeHtml(fmtTime(eff._date))}</div>
       <div class="merch">${escapeHtml(eff.merchant || '—')}</div>
-      <div class="amt">${INR.format(eff.amount || 0)}</div>
       <div class="meta">
-        <span class="pill" data-cat="${escapeHtml(eff.category || '')}">${escapeHtml(eff.category || '')}</span>
+        <span class="pill" data-cat="${escapeHtml(eff.category || '')}">${escapeHtml(withEmoji(eff.category || ''))}</span>
         <span class="badge ${escapeHtml(pm)}">${escapeHtml(pmLabel)}</span>
         <span class="note" title="${escapeHtml(eff.note || '')}">${escapeHtml(eff.note || '')}</span>
         <span class="flags">${flagsHtml}</span>
       </div>
+      <div class="amt">${INR.format(eff.amount || 0)}</div>
       ${expandedIdx === e._idx ? renderExpand(e) : ''}
     </div>
   `;
