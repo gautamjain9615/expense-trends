@@ -135,6 +135,7 @@
   .tx-row {
     display: grid;
     grid-template-columns: 64px minmax(120px, 1fr) minmax(0, 1.7fr) 90px;
+    grid-template-areas: "time merch meta amt";
     align-items: center;
     gap: 12px;
     padding: 8px 6px;
@@ -146,10 +147,11 @@
   .tx-row.expanded { background: var(--panel-2); }
   .tx-row.edited { border-left: 2px solid var(--warn); padding-left: 4px; }
   .tx-row.deleted { opacity: 0.4; text-decoration: line-through; border-left: 2px solid var(--bad); padding-left: 4px; }
-  .tx-row .time { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-  .tx-row .merch { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-  .tx-row .amt { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+  .tx-row .time { grid-area: time; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .tx-row .merch { grid-area: merch; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .tx-row .amt { grid-area: amt; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
   .tx-row .meta {
+    grid-area: meta;
     display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;
     overflow: hidden; min-width: 0;
   }
