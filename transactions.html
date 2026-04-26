@@ -134,7 +134,7 @@
 
   .tx-row {
     display: grid;
-    grid-template-columns: 70px 130px 1fr 70px 100px 1fr 80px;
+    grid-template-columns: 60px minmax(120px, 1fr) auto auto;
     align-items: center;
     gap: 10px;
     padding: 8px 6px;
@@ -147,28 +147,35 @@
   .tx-row.edited { border-left: 2px solid var(--warn); padding-left: 4px; }
   .tx-row.deleted { opacity: 0.4; text-decoration: line-through; border-left: 2px solid var(--bad); padding-left: 4px; }
   .tx-row .time { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-  .tx-row .merch { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tx-row .merch { font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
   .tx-row .amt { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
-  .tx-row .note { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .tx-row .flags { display: flex; gap: 2px; align-items: center; justify-content: flex-end; font-size: 13px; }
-  .tx-row .flag-icon { cursor: help; opacity: 0.85; }
+  .tx-row .meta {
+    display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;
+    overflow: hidden; min-width: 0;
+  }
+  .tx-row .meta .note { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+  .tx-row .meta .flags { display: inline-flex; gap: 2px; align-items: center; font-size: 13px; flex: 0 0 auto; }
+  .tx-row .meta .flag-icon { cursor: help; opacity: 0.85; }
 
   @media (max-width: 800px) {
     .tx-row {
       grid-template-columns: 1fr auto;
       grid-template-areas:
         "merch amt"
-        "meta meta";
-      gap: 4px;
+        "meta  meta";
+      gap: 4px 8px;
       padding: 10px 6px;
     }
     .tx-row .time { display: none; }
-    .tx-row .merch { grid-area: merch; }
+    .tx-row .merch { grid-area: merch; font-weight: 600; }
     .tx-row .amt { grid-area: amt; }
-    .tx-row .cat-chip-cell, .tx-row .pmt-cell, .tx-row .note, .tx-row .flags {
-      grid-area: meta; display: inline; font-size: 11px; color: var(--muted); text-align: left;
+    .tx-row .meta {
+      grid-area: meta;
+      flex-wrap: wrap;
+      font-size: 11px;
+      gap: 6px;
     }
-    .tx-row .note::before { content: " · "; }
+    .tx-row .meta .note { font-size: 11px; flex: 1 1 100%; }
   }
 
   .pill {
@@ -737,12 +744,14 @@ function renderRow(e) {
   return `
     <div class="tx-row ${expandedIdx === e._idx ? 'expanded' : ''} ${edited ? 'edited' : ''}" data-idx="${e._idx}">
       <div class="time">${escapeHtml(fmtTime(eff._date))}</div>
-      <div class="cat-chip-cell"><span class="pill" data-cat="${escapeHtml(eff.category || '')}">${escapeHtml(eff.category || '')}</span></div>
       <div class="merch">${escapeHtml(eff.merchant || '—')}</div>
-      <div class="pmt-cell"><span class="badge ${escapeHtml(pm)}">${escapeHtml(pmLabel)}</span></div>
       <div class="amt">${INR.format(eff.amount || 0)}</div>
-      <div class="note" title="${escapeHtml(eff.note || '')}">${escapeHtml(eff.note || '')}</div>
-      <div class="flags">${flagsHtml}</div>
+      <div class="meta">
+        <span class="pill" data-cat="${escapeHtml(eff.category || '')}">${escapeHtml(eff.category || '')}</span>
+        <span class="badge ${escapeHtml(pm)}">${escapeHtml(pmLabel)}</span>
+        <span class="note" title="${escapeHtml(eff.note || '')}">${escapeHtml(eff.note || '')}</span>
+        <span class="flags">${flagsHtml}</span>
+      </div>
       ${expandedIdx === e._idx ? renderExpand(e) : ''}
     </div>
   `;

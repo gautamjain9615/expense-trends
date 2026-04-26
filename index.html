@@ -81,6 +81,10 @@
   .tile .sub.up, .tile .sub span.up { color: var(--bad); }
   .tile .sub.down, .tile .sub span.down { color: var(--good); }
   .tile .spark { position: absolute; right: 14px; top: 14px; }
+  @media (max-width: 700px) {
+    .tile .spark { position: static; margin-top: 6px; }
+    .tile { padding: 12px 14px; }
+  }
   .tile .topcat-name { font-size: 17px; font-weight: 600; line-height: 1.2; margin-top: 6px; }
   .tile .topcat-amount { font-size: 22px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
 
