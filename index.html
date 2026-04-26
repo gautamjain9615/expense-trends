@@ -257,30 +257,6 @@
   <!-- STATUS STRIP -->
   <section class="status" id="status"></section>
 
-  <!-- ANOMALIES -->
-  <section class="anomalies" id="anomalies"></section>
-
-  <!-- CALENDAR HEATMAP -->
-  <section class="card">
-    <h2>Last 90 days <span class="h-sub" id="heatmapSub"></span></h2>
-    <div class="heatmap-wrap">
-      <div class="heatmap" id="heatmap"></div>
-      <div class="heatmap-legend">
-        <span>Less</span>
-        <div class="scale">
-          <span style="background: var(--panel-2)"></span>
-          <span style="background: rgba(var(--heat-base), 0.25)"></span>
-          <span style="background: rgba(var(--heat-base), 0.5)"></span>
-          <span style="background: rgba(var(--heat-base), 0.75)"></span>
-          <span style="background: rgba(var(--heat-base), 1.0)"></span>
-        </div>
-        <span>More</span>
-        <span style="margin-left: auto" class="h-sub">Click a day to see transactions</span>
-      </div>
-      <div class="day-detail" id="dayDetail"></div>
-    </div>
-  </section>
-
   <!-- CATEGORY BARS + CUMULATIVE LINE -->
   <div class="row-2">
     <section class="card">
@@ -328,6 +304,33 @@
       </thead>
       <tbody></tbody>
     </table>
+  </section>
+
+  <!-- INSIGHTS -->
+  <section class="card" id="insightsCard" style="display:none">
+    <h2>Insights <span class="h-sub" id="insightsSub"></span></h2>
+    <div class="anomalies" id="anomalies"></div>
+  </section>
+
+  <!-- CALENDAR HEATMAP -->
+  <section class="card">
+    <h2>Last 90 days <span class="h-sub" id="heatmapSub"></span></h2>
+    <div class="heatmap-wrap">
+      <div class="heatmap" id="heatmap"></div>
+      <div class="heatmap-legend">
+        <span>Less</span>
+        <div class="scale">
+          <span style="background: var(--panel-2)"></span>
+          <span style="background: rgba(var(--heat-base), 0.25)"></span>
+          <span style="background: rgba(var(--heat-base), 0.5)"></span>
+          <span style="background: rgba(var(--heat-base), 0.75)"></span>
+          <span style="background: rgba(var(--heat-base), 1.0)"></span>
+        </div>
+        <span>More</span>
+        <span style="margin-left: auto" class="h-sub">Click a day to see transactions</span>
+      </div>
+      <div class="day-detail" id="dayDetail"></div>
+    </div>
   </section>
 
 </main>
@@ -673,7 +676,15 @@ function renderAnomalies(entries) {
   });
 
   const box = document.getElementById('anomalies');
-  if (!out.length) { box.innerHTML = ''; return; }
+  const card = document.getElementById('insightsCard');
+  const sub = document.getElementById('insightsSub');
+  if (!out.length) {
+    card.style.display = 'none';
+    box.innerHTML = '';
+    return;
+  }
+  card.style.display = '';
+  sub.textContent = `${out.length} item${out.length === 1 ? '' : 's'}`;
   box.innerHTML = out.map(a => `
     <div class="anom ${a.kind === 'bad' ? 'bad' : a.kind === 'good' ? 'good' : ''}">
       <div class="anom-icon">${a.kind === 'bad' ? '!' : a.kind === 'good' ? '+' : '*'}</div>
