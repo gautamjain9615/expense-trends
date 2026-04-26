@@ -194,6 +194,34 @@
   }
   .cc-callout b { font-weight: 700; }
 
+  /* DRILLDOWN */
+  .clickable { cursor: pointer; transition: background 0.1s; }
+  .clickable:hover { background: var(--panel-2); }
+  .clickable.active { background: var(--accent-soft); }
+  .drilldown-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .drilldown-chip {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent-soft); color: var(--accent);
+    padding: 5px 12px; border-radius: 999px; font-size: 13px; font-weight: 600;
+  }
+  .drilldown-chip .clear {
+    cursor: pointer; opacity: 0.7; font-weight: 700; font-size: 14px;
+    padding: 0 2px; line-height: 1;
+  }
+  .drilldown-chip .clear:hover { opacity: 1; }
+  .drilldown-stats { color: var(--muted); font-size: 13px; }
+  .drilldown-stats b { color: var(--text); font-weight: 600; }
+  .badge {
+    display: inline-block; padding: 1px 6px; background: var(--panel-2);
+    border-radius: 4px; font-size: 10px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap;
+  }
+  .badge.upi { background: rgba(94,166,255,0.15); color: var(--accent); }
+  .badge.credit_card { background: rgba(255,158,79,0.18); color: #ff9e4f; }
+  .badge.debit_card { background: rgba(192,132,252,0.18); color: #c084fc; }
+  .badge.cash { background: rgba(107,213,138,0.18); color: var(--good); }
+  .badge.wallet { background: rgba(255,209,102,0.18); color: var(--warn); }
+
   /* PATTERNS */
   .pattern { display: flex; gap: 16px; align-items: baseline; margin-top: 4px; flex-wrap: wrap; }
   .pattern .stat-k { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
@@ -298,6 +326,30 @@
     </section>
   </div>
 
+  <!-- DRILLDOWN — appears when a filter is set -->
+  <section class="card" id="drilldownCard" style="display:none">
+    <h2>Filtered transactions</h2>
+    <div class="drilldown-bar">
+      <span class="drilldown-chip" id="drilldownChip"></span>
+      <span class="drilldown-stats" id="drilldownStats"></span>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Merchant</th>
+            <th>Category</th>
+            <th>Pmt</th>
+            <th style="text-align:right">Amount</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody id="drilldownTbody"></tbody>
+      </table>
+    </div>
+  </section>
+
   <!-- PATTERNS + PAYMENT -->
   <div class="row-3">
     <section class="card">
@@ -328,6 +380,7 @@ let selectedMonth = null;     // 'YYYY-MM'
 let selectedDayKey = null;
 let merchantSort = 'total';
 let merchantSortDir = 'desc';
+let selectedFilter = null;    // {type: 'category'|'merchant'|'pm'|'dow', value, label}
 let charts = {};
 
 // ─── utilities ────────────────────────────────────────────────────────
@@ -449,7 +502,12 @@ function populateMonthSelect() {
     selectedMonth = sorted[0];
   }
   sel.value = selectedMonth;
-  sel.onchange = () => { selectedMonth = sel.value; selectedDayKey = null; renderAll(); };
+  sel.onchange = () => {
+    selectedMonth = sel.value;
+    selectedDayKey = null;
+    selectedFilter = null;   // filter is month-scoped; clear on month switch
+    renderAll();
+  };
 }
 
 // ─── derived data per month ──────────────────────────────────────────
@@ -490,6 +548,75 @@ function renderAll() {
   renderRhythm(m, last);
   renderDayOfWeek(m);
   renderPaymentMethods(m);
+  renderDrilldown(m);
+}
+
+// ─── DRILLDOWN ───────────────────────────────────────────────────────
+function setFilter(type, value, label) {
+  if (selectedFilter && selectedFilter.type === type && selectedFilter.value === value) {
+    selectedFilter = null;
+  } else {
+    selectedFilter = { type, value, label: label ?? value };
+  }
+  // Re-render the affected sections so .active highlights stay in sync
+  const m = getMonthData(selectedMonth);
+  renderCategoriesAmount(m);
+  renderCategoriesDelta(m, priorMonths(selectedMonth, 3));
+  renderMerchants(m, priorMonths(selectedMonth, 1)[0]);
+  renderPaymentMethods(m);
+  renderDrilldown(m);
+  if (selectedFilter) {
+    document.getElementById('drilldownCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function clearFilter() {
+  selectedFilter = null;
+  const m = getMonthData(selectedMonth);
+  renderCategoriesAmount(m);
+  renderCategoriesDelta(m, priorMonths(selectedMonth, 3));
+  renderMerchants(m, priorMonths(selectedMonth, 1)[0]);
+  renderPaymentMethods(m);
+  renderDrilldown(m);
+}
+
+function renderDrilldown(m) {
+  const card = document.getElementById('drilldownCard');
+  if (!selectedFilter) { card.style.display = 'none'; return; }
+  card.style.display = '';
+
+  const f = selectedFilter;
+  let filtered = m.entries;
+  if (f.type === 'category') filtered = filtered.filter(e => e.category === f.value);
+  else if (f.type === 'merchant') filtered = filtered.filter(e => (e.merchant || '').toLowerCase() === f.value);
+  else if (f.type === 'pm') filtered = filtered.filter(e => e.payment_method === f.value);
+  else if (f.type === 'dow') filtered = filtered.filter(e => isoDayOfWeek(e._date) === f.value);
+  filtered = filtered.slice().sort((a, b) => b._date - a._date);
+
+  const total = filtered.reduce((s, e) => s + (e.amount || 0), 0);
+  const avg = filtered.length ? total / filtered.length : 0;
+
+  const typeLabel = { category: 'Category', merchant: 'Merchant', pm: 'Payment', dow: 'Day' }[f.type] || '';
+  document.getElementById('drilldownChip').innerHTML = `
+    ${typeLabel}: ${escapeHtml(f.label)}
+    <span class="clear" onclick="clearFilter()">×</span>
+  `;
+  document.getElementById('drilldownStats').innerHTML =
+    `<b>${filtered.length}</b> txn · <b>${INR.format(total)}</b> total · avg <b>${INR.format(avg)}</b>`;
+
+  const tbody = document.getElementById('drilldownTbody');
+  tbody.innerHTML = filtered.length === 0
+    ? '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:20px">No matching transactions.</td></tr>'
+    : filtered.map(e => `
+        <tr>
+          <td class="muted">${escapeHtml(fmtDateShort(e._date))}</td>
+          <td>${escapeHtml(e.merchant || '')}</td>
+          <td><span class="pill">${escapeHtml(e.category || '')}</span></td>
+          <td><span class="badge ${escapeHtml(e.payment_method || '')}">${escapeHtml((e.payment_method || '').replace('_card',''))}</span></td>
+          <td class="amount">${INR.format(e.amount || 0)}</td>
+          <td class="muted">${escapeHtml(e.note || '')}</td>
+        </tr>
+      `).join('');
 }
 
 // ─── 1. STATUS — 6 tiles ──────────────────────────────────────────────
@@ -808,19 +935,25 @@ function renderCategoriesAmount(m) {
   const rows = Object.entries(cats).sort((a, b) => b[1] - a[1]);
   const max = rows.length ? rows[0][1] : 1;
 
+  const isActive = (c) => selectedFilter?.type === 'category' && selectedFilter.value === c;
+
   document.getElementById('catBarsAmount').innerHTML = rows.length === 0
     ? '<div style="color:var(--muted);font-size:13px">No data this month.</div>'
     : rows.map(([cat, amt]) => {
         const w = (amt / max) * 100;
         const pct = total > 0 ? (amt / total) * 100 : 0;
         return `
-          <div class="catbar">
+          <div class="catbar clickable ${isActive(cat) ? 'active' : ''}" data-cat="${escapeHtml(cat)}">
             <div class="name">${escapeHtml(cat)}</div>
             <div class="bar"><div class="fill" style="width:${w}%"></div><div class="lbl">${compactINR(amt)}</div></div>
             <div class="pct">${pct.toFixed(0)}%</div>
           </div>
         `;
       }).join('');
+
+  document.querySelectorAll('#catBarsAmount .catbar').forEach(el => {
+    el.addEventListener('click', () => setFilter('category', el.dataset.cat, el.dataset.cat));
+  });
 }
 
 // ─── 6. CATEGORIES — delta vs 3-month baseline ───────────────────────
@@ -846,6 +979,8 @@ function renderCategoriesDelta(m, past3) {
 
   const maxAbs = Math.max(...rows.map(r => Math.abs(r.delta)), 1);
 
+  const isActive = (c) => selectedFilter?.type === 'category' && selectedFilter.value === c;
+
   document.getElementById('catBarsDelta').innerHTML = rows.length === 0
     ? '<div style="color:var(--muted);font-size:13px">Not enough history for baseline.</div>'
     : rows.map(r => {
@@ -854,13 +989,17 @@ function renderCategoriesDelta(m, past3) {
         const w = (Math.abs(r.delta) / maxAbs) * 100;
         const sign = r.delta > 0 ? '+' : r.delta < 0 ? '−' : '';
         return `
-          <div class="catbar">
+          <div class="catbar clickable ${isActive(r.cat) ? 'active' : ''}" data-cat="${escapeHtml(r.cat)}">
             <div class="name">${escapeHtml(r.cat)}</div>
             <div class="bar delta-bar"><div class="fill ${dirCls}" style="width:${w}%"></div><div class="lbl">${sign}${compactINR(Math.abs(r.delta))}</div></div>
             <div class="delta ${cls}">${r.base > 0 ? 'base ' + compactINR(r.base) : 'new'}</div>
           </div>
         `;
       }).join('');
+
+  document.querySelectorAll('#catBarsDelta .catbar').forEach(el => {
+    el.addEventListener('click', () => setFilter('category', el.dataset.cat, el.dataset.cat));
+  });
 }
 
 // ─── 7. MERCHANT TABLE ───────────────────────────────────────────────
@@ -920,6 +1059,8 @@ function renderMerchants(m, last) {
   });
 
   const tbody = document.querySelector('#merchTable tbody');
+  const isActive = (k) => selectedFilter?.type === 'merchant' && selectedFilter.value === k;
+
   tbody.innerHTML = rows.length === 0
     ? '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">No merchants this month.</td></tr>'
     : rows.map(r => {
@@ -931,7 +1072,7 @@ function renderMerchants(m, last) {
           deltaCell = `<td class="amount ${cls}">${sign}${compactINR(Math.abs(r.delta))}<span class="muted" style="font-size:11px;font-weight:400">${pctTxt}</span></td>`;
         }
         return `
-          <tr>
+          <tr class="clickable ${isActive(r.key) ? 'active' : ''}" data-key="${escapeHtml(r.key)}" data-name="${escapeHtml(r.name)}">
             <td>${escapeHtml(r.name)}${r.isNew ? ' <span class="pill new">new</span>' : ''}</td>
             <td><span class="pill">${escapeHtml(r.cat)}</span></td>
             <td class="amount">${r.count}</td>
@@ -942,6 +1083,10 @@ function renderMerchants(m, last) {
           </tr>
         `;
       }).join('');
+
+  tbody.querySelectorAll('tr.clickable').forEach(tr => {
+    tr.addEventListener('click', () => setFilter('merchant', tr.dataset.key, tr.dataset.name));
+  });
 }
 
 document.querySelectorAll('#merchTable th[data-sort]').forEach(th => {
@@ -1124,6 +1269,11 @@ function renderDayOfWeek(m) {
     data: { labels: DOW, datasets: [{ data: sums, backgroundColor: accent, borderRadius: 3 }] },
     options: {
       responsive: true, maintainAspectRatio: false,
+      onClick: (evt, els) => {
+        if (!els || !els.length) return;
+        const idx = els[0].index;
+        setFilter('dow', idx, DOW[idx]);
+      },
       plugins: {
         legend: { display: false },
         tooltip: { callbacks: { label: (ctx) => `${INR.format(ctx.parsed.y)} · ${counts[ctx.dataIndex]} txn` } },
@@ -1153,12 +1303,14 @@ function renderPaymentMethods(m) {
   const labelMap = { upi: 'UPI', credit_card: 'Credit Card', debit_card: 'Debit Card', cash: 'Cash', wallet: 'Wallet' };
   const clsMap = { upi: '', credit_card: 'cc', debit_card: 'dc', cash: 'cash', wallet: 'wallet' };
 
+  const isActive = (p) => selectedFilter?.type === 'pm' && selectedFilter.value === p;
+
   document.getElementById('paymentMethods').innerHTML = rows.map(p => {
     const v = sums[p];
     const w = (v / max) * 100;
     const pct = total > 0 ? (v / total) * 100 : 0;
     return `
-      <div class="pm-row">
+      <div class="pm-row clickable ${isActive(p) ? 'active' : ''}" data-pm="${escapeHtml(p)}" data-label="${escapeHtml(labelMap[p] || p)}">
         <div class="pm-name">${escapeHtml(labelMap[p] || p)}</div>
         <div class="pm-bar"><div class="fill ${clsMap[p] || ''}" style="width:${w}%"></div></div>
         <div class="pm-amt">${compactINR(v)}</div>
@@ -1166,6 +1318,10 @@ function renderPaymentMethods(m) {
       </div>
     `;
   }).join('');
+
+  document.querySelectorAll('#paymentMethods .pm-row').forEach(el => {
+    el.addEventListener('click', () => setFilter('pm', el.dataset.pm, el.dataset.label));
+  });
 
   // CC callout if non-trivial credit card share
   const ccSum = sums['credit_card'] || 0;

@@ -112,6 +112,24 @@
 
   /* HEATMAP */
   .heatmap-wrap { display: flex; flex-direction: column; gap: 10px; }
+  .heatmap-frame {
+    display: grid;
+    grid-template-columns: 24px 1fr;
+    grid-template-rows: 16px 1fr;
+    gap: 4px;
+  }
+  .hm-corner { /* empty top-left intersection */ }
+  .hm-months {
+    display: grid; grid-auto-flow: column; grid-auto-columns: 1fr;
+    gap: 3px; font-size: 10px; color: var(--muted); font-weight: 500;
+    align-items: center;
+  }
+  .hm-months .month-cell { text-align: left; padding-left: 1px; white-space: nowrap; }
+  .hm-days {
+    display: grid; grid-template-rows: repeat(7, 1fr); gap: 3px;
+    font-size: 9px; color: var(--muted);
+    text-align: center; align-items: center;
+  }
   .heatmap {
     display: grid; grid-template-rows: repeat(7, 1fr);
     grid-auto-flow: column; grid-auto-columns: 1fr;
@@ -318,7 +336,14 @@
   <section class="card">
     <h2>Last 90 days <span class="h-sub" id="heatmapSub"></span></h2>
     <div class="heatmap-wrap">
-      <div class="heatmap" id="heatmap"></div>
+      <div class="heatmap-frame">
+        <div class="hm-corner"></div>
+        <div class="hm-months" id="heatmapMonths"></div>
+        <div class="hm-days">
+          <div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div>
+        </div>
+        <div class="heatmap" id="heatmap"></div>
+      </div>
       <div class="heatmap-legend">
         <span>Less</span>
         <div class="scale">
@@ -750,6 +775,28 @@ function renderHeatmap(entries) {
          title="${c.key} · ${INR.format(c.amt)}"
          data-key="${c.key}"></div>
   `).join('');
+
+  // Populate month labels above the heatmap. Each "column" is 7 cells (one week).
+  const colCount = cells.length / 7;
+  const monthLabels = [];
+  let prevMonth = -1;
+  for (let col = 0; col < colCount; col++) {
+    // Use the first non-future day of the column to determine month
+    let mon = -1;
+    for (let row = 0; row < 7; row++) {
+      const cell = cells[col * 7 + row];
+      const m = new Date(cell.key + 'T00:00:00').getMonth();
+      if (mon === -1) mon = m;
+    }
+    if (mon !== prevMonth) {
+      const label = new Date(cells[col * 7].key + 'T00:00:00').toLocaleDateString('en-IN', { month: 'short' });
+      monthLabels.push(`<div class="month-cell">${label}</div>`);
+      prevMonth = mon;
+    } else {
+      monthLabels.push('<div></div>');
+    }
+  }
+  document.getElementById('heatmapMonths').innerHTML = monthLabels.join('');
 
   document.querySelectorAll('.heat-cell').forEach(el => {
     if (el.classList.contains('future')) return;
