@@ -5,44 +5,62 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Expense Trends</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
 <style>
   :root {
-    --bg: #0f1115;
-    --panel: #181b22;
-    --border: #2a2f3a;
-    --text: #e6e9ef;
-    --muted: #8b93a3;
-    --accent: #5ea6ff;
-    --good: #6bd58a;
-    --bad: #ff7a7a;
+    --bg: #0f1115; --panel: #181b22; --panel-2: #1f232c; --border: #2a2f3a;
+    --text: #e6e9ef; --muted: #8b93a3; --accent: #5ea6ff; --accent-soft: rgba(94,166,255,0.15);
+    --good: #6bd58a; --bad: #ff7a7a; --warn: #ffd166;
+    --heat-base: 94, 166, 255;
   }
   @media (prefers-color-scheme: light) {
     :root {
-      --bg: #f7f8fa; --panel: #ffffff; --border: #e6e8ef;
-      --text: #1a1d23; --muted: #6b7280; --accent: #2b6cff;
-      --good: #1f9d55; --bad: #c0392b;
+      --bg: #f7f8fa; --panel: #ffffff; --panel-2: #f1f3f7; --border: #e6e8ef;
+      --text: #1a1d23; --muted: #6b7280; --accent: #2b6cff; --accent-soft: rgba(43,108,255,0.10);
+      --good: #1f9d55; --bad: #c0392b; --warn: #b7791f;
+      --heat-base: 43, 108, 255;
     }
   }
   * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
   body {
-    margin: 0; padding: 24px;
     font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
     background: var(--bg); color: var(--text);
-    max-width: 1200px; margin: 0 auto;
+    -webkit-font-smoothing: antialiased;
   }
-  header { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
-  h1 { margin: 0; font-size: 24px; font-weight: 600; }
-  h2 { margin: 0 0 12px; font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-  .picker { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+  .wrap { max-width: 1280px; margin: 0 auto; padding: 20px; }
+
+  /* HEADER */
+  header { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+  .brand { font-size: 18px; font-weight: 600; }
+  nav { display: flex; gap: 4px; }
+  nav a {
+    padding: 6px 12px; border-radius: 7px; font-size: 13px; font-weight: 500;
+    text-decoration: none; color: var(--muted);
+  }
+  nav a.active { background: var(--accent-soft); color: var(--accent); }
+  nav a.disabled { color: var(--muted); opacity: 0.45; cursor: not-allowed; }
+  nav a.disabled::after { content: " · soon"; font-size: 11px; opacity: 0.7; }
+  .header-spacer { flex: 1; }
+  .picker { display: flex; align-items: center; gap: 10px; }
+  .picker .filename { font-size: 12px; color: var(--muted); }
   .picker label {
-    padding: 8px 14px; background: var(--accent); color: white; border-radius: 8px;
-    cursor: pointer; font-size: 14px; font-weight: 500;
+    padding: 7px 12px; background: var(--accent); color: white; border-radius: 7px;
+    cursor: pointer; font-size: 13px; font-weight: 500;
   }
   .picker label:hover { opacity: 0.9; }
   .picker input { display: none; }
-  .picker .filename { font-size: 13px; color: var(--muted); }
 
+  /* FILTER CHIPS */
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 18px; }
+  .chip {
+    padding: 6px 12px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 999px; font-size: 12px; cursor: pointer; color: var(--muted);
+    user-select: none; transition: all 0.15s;
+  }
+  .chip:hover { border-color: var(--accent); }
+  .chip.active { background: var(--accent); border-color: var(--accent); color: white; }
+
+  /* EMPTY */
   #empty { text-align: center; padding: 80px 20px; color: var(--muted); }
   #empty p { margin: 8px 0; }
   #empty code { background: var(--panel); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
@@ -50,61 +68,173 @@
   main { display: none; }
   main.loaded { display: block; }
 
-  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
-  .stat {
-    background: var(--panel); border: 1px solid var(--border);
-    border-radius: 12px; padding: 16px;
+  /* STATUS STRIP */
+  .status { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+  @media (max-width: 900px) { .status { grid-template-columns: repeat(2, 1fr); } }
+  .tile {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 16px; position: relative;
   }
-  .stat .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-  .stat .value { font-size: 24px; font-weight: 600; margin-top: 4px; }
-  .stat .delta { font-size: 12px; color: var(--muted); margin-top: 4px; }
-  .stat .delta.up { color: var(--bad); }
-  .stat .delta.down { color: var(--good); }
+  .tile .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+  .tile .value { font-size: 28px; font-weight: 700; margin-top: 6px; font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .tile .sub { font-size: 12px; color: var(--muted); margin-top: 6px; line-height: 1.4; }
+  .tile .sub.up { color: var(--bad); }
+  .tile .sub.down { color: var(--good); }
+  .tile .spark { position: absolute; right: 14px; top: 14px; }
+  .tile .topcat-name { font-size: 17px; font-weight: 600; line-height: 1.2; margin-top: 6px; }
+  .tile .topcat-amount { font-size: 22px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
 
-  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-  @media (max-width: 800px) { .row { grid-template-columns: 1fr; } }
+  /* ANOMALIES */
+  .anomalies { display: grid; gap: 8px; margin-bottom: 16px; }
+  .anom {
+    background: var(--panel); border: 1px solid var(--border); border-left: 3px solid var(--warn);
+    border-radius: 8px; padding: 10px 14px; font-size: 13px;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .anom.bad { border-left-color: var(--bad); }
+  .anom.good { border-left-color: var(--good); }
+  .anom .anom-icon { font-size: 14px; }
+  .anom .anom-body { flex: 1; }
+  .anom .anom-title { font-weight: 600; }
+  .anom .anom-detail { color: var(--muted); font-size: 12px; margin-top: 2px; }
 
+  /* SECTION CARD */
   .card {
     background: var(--panel); border: 1px solid var(--border);
-    border-radius: 12px; padding: 16px;
+    border-radius: 12px; padding: 16px; margin-bottom: 16px;
   }
-  .card canvas { max-height: 280px; }
-
-  .merchants { list-style: none; padding: 0; margin: 0; }
-  .merchants li {
-    display: flex; justify-content: space-between; padding: 8px 0;
-    border-bottom: 1px solid var(--border); font-size: 14px;
+  .card h2 {
+    margin: 0 0 12px; font-size: 12px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    display: flex; align-items: center; justify-content: space-between;
   }
-  .merchants li:last-child { border-bottom: 0; }
-  .merchants .name { display: flex; gap: 8px; align-items: center; }
-  .merchants .count { color: var(--muted); font-size: 12px; }
+  .card h2 .h-sub { color: var(--muted); font-weight: 500; text-transform: none; letter-spacing: 0; font-size: 11px; }
 
-  .filter-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
-  .filter-row input, .filter-row select {
-    background: var(--bg); border: 1px solid var(--border); color: var(--text);
-    padding: 6px 10px; border-radius: 6px; font-size: 13px;
+  /* HEATMAP */
+  .heatmap-wrap { display: flex; flex-direction: column; gap: 10px; }
+  .heatmap {
+    display: grid; grid-template-rows: repeat(7, 1fr);
+    grid-auto-flow: column; grid-auto-columns: 1fr;
+    gap: 3px; max-width: 100%;
   }
-  .filter-row input { flex: 1; min-width: 180px; }
+  .heat-cell {
+    aspect-ratio: 1 / 1; min-width: 12px;
+    background: var(--panel-2);
+    border-radius: 3px; cursor: pointer;
+    transition: transform 0.1s;
+    position: relative;
+  }
+  .heat-cell:hover { transform: scale(1.2); z-index: 2; outline: 1px solid var(--accent); }
+  .heat-cell.selected { outline: 2px solid var(--accent); z-index: 1; }
+  .heat-cell.future { opacity: 0.25; cursor: default; }
+  .heat-cell.future:hover { transform: none; outline: none; }
+  .heatmap-legend {
+    display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted);
+  }
+  .heatmap-legend .scale { display: flex; gap: 2px; }
+  .heatmap-legend .scale span {
+    width: 12px; height: 12px; border-radius: 2px;
+  }
+  .day-detail { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .day-detail .day-header { font-size: 13px; font-weight: 600; margin-bottom: 8px; display: flex; justify-content: space-between; }
+  .day-detail .day-header .day-total { color: var(--muted); font-weight: 500; }
+  .day-detail ul { list-style: none; padding: 0; margin: 0; }
+  .day-detail li {
+    display: flex; gap: 10px; align-items: center; padding: 6px 0;
+    border-bottom: 1px solid var(--border); font-size: 13px;
+  }
+  .day-detail li:last-child { border-bottom: 0; }
+  .day-detail .merch { flex: 1; }
+  .day-detail .day-amt { font-variant-numeric: tabular-nums; font-weight: 500; }
+  .day-detail .empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
 
+  /* TWO-COL ROW */
+  .row-2 { display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; margin-bottom: 16px; }
+  @media (max-width: 900px) { .row-2 { grid-template-columns: 1fr; } }
+
+  /* CATEGORY BARS */
+  .catbars {
+    display: grid; gap: 10px;
+  }
+  .catbar { display: grid; grid-template-columns: 130px 1fr 90px; align-items: center; gap: 10px; font-size: 13px; }
+  @media (max-width: 600px) { .catbar { grid-template-columns: 100px 1fr 80px; } }
+  .catbar .name { color: var(--text); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .catbar .bars { display: grid; gap: 3px; }
+  .catbar .bar {
+    height: 10px; border-radius: 3px; background: var(--panel-2); position: relative; overflow: hidden;
+  }
+  .catbar .bar .fill {
+    position: absolute; top: 0; left: 0; height: 100%; border-radius: 3px;
+    background: var(--accent);
+  }
+  .catbar .bar.last .fill { background: var(--muted); opacity: 0.6; }
+  .catbar .bar .lbl { position: absolute; right: 4px; top: -1px; font-size: 9px; color: var(--text); line-height: 12px; font-weight: 500; }
+  .catbar .delta { font-size: 11px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .catbar .delta.up { color: var(--bad); }
+  .catbar .delta.down { color: var(--good); }
+
+  /* CHARTS */
+  .chart-h { height: 280px; }
+  .chart-h canvas { max-height: 280px; }
+
+  /* TABLE */
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { text-align: left; padding: 10px 8px; font-weight: 600; color: var(--muted);
+  th { text-align: left; padding: 8px; font-weight: 600; color: var(--muted);
        text-transform: uppercase; letter-spacing: 0.05em; font-size: 11px;
-       border-bottom: 1px solid var(--border); }
-  td { padding: 10px 8px; border-bottom: 1px solid var(--border); }
+       border-bottom: 1px solid var(--border); white-space: nowrap;
+       cursor: pointer; user-select: none; }
+  th.no-sort { cursor: default; }
+  th .sort-arrow { opacity: 0.5; margin-left: 2px; }
+  th.sorted .sort-arrow { opacity: 1; color: var(--accent); }
+  td { padding: 8px; border-bottom: 1px solid var(--border); vertical-align: middle; }
   tr:last-child td { border-bottom: 0; }
-  td.amount { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+  tr.tx-row { cursor: pointer; }
+  tr.tx-row:hover { background: var(--panel-2); }
+  tr.raw-row { background: var(--panel-2); }
+  tr.raw-row td { color: var(--muted); font-size: 12px; font-style: italic; padding: 6px 8px; }
+  td.amount { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; white-space: nowrap; }
   td.muted { color: var(--muted); font-size: 12px; }
-  .pill { display: inline-block; padding: 2px 8px; background: var(--bg); border-radius: 12px;
-          font-size: 11px; color: var(--muted); }
+  .pill {
+    display: inline-block; padding: 1px 8px; background: var(--panel-2);
+    border-radius: 999px; font-size: 11px; color: var(--muted); white-space: nowrap;
+  }
+  .badge {
+    display: inline-block; padding: 1px 6px; background: var(--panel-2);
+    border-radius: 4px; font-size: 10px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap;
+  }
+  .badge.upi { background: rgba(94,166,255,0.15); color: var(--accent); }
+  .badge.credit_card { background: rgba(255,158,79,0.18); color: #ff9e4f; }
+  .badge.debit_card { background: rgba(192,132,252,0.18); color: #c084fc; }
+  .badge.cash { background: rgba(107,213,138,0.18); color: var(--good); }
+  .badge.wallet { background: rgba(255,209,102,0.18); color: var(--warn); }
 
+  .tx-table-wrap { overflow-x: auto; }
+
+  /* ERRORS */
   .errors { background: rgba(255,122,122,0.08); border: 1px solid var(--bad); color: var(--bad);
             padding: 8px 12px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
+
+  /* TOAST */
+  .toast {
+    position: fixed; right: 20px; bottom: 20px;
+    background: var(--panel); border: 1px solid var(--border);
+    padding: 10px 14px; border-radius: 10px; font-size: 13px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18); display: none; z-index: 100;
+  }
 </style>
 </head>
 <body>
+<div class="wrap">
 
 <header>
-  <h1>Expense Trends</h1>
+  <span class="brand">Expense Trends</span>
+  <nav>
+    <a class="active" href="index.html">Dashboard</a>
+    <a class="disabled" href="#">Year</a>
+    <a class="disabled" href="#">Transactions</a>
+  </nav>
+  <span class="header-spacer"></span>
   <div class="picker">
     <span class="filename" id="filename"></span>
     <label for="fileInput" id="pickerLabel">Load expenses.txt</label>
@@ -120,85 +250,141 @@
 <div id="errors" class="errors" style="display:none"></div>
 
 <main id="main">
-  <section class="stats" id="stats"></section>
 
-  <div class="row">
-    <div class="card">
-      <h2>By Category (This Month)</h2>
-      <canvas id="categoryChart"></canvas>
+  <!-- FILTER CHIPS -->
+  <div class="chips" id="chips"></div>
+
+  <!-- STATUS STRIP -->
+  <section class="status" id="status"></section>
+
+  <!-- ANOMALIES -->
+  <section class="anomalies" id="anomalies"></section>
+
+  <!-- CALENDAR HEATMAP -->
+  <section class="card">
+    <h2>Last 90 days <span class="h-sub" id="heatmapSub"></span></h2>
+    <div class="heatmap-wrap">
+      <div class="heatmap" id="heatmap"></div>
+      <div class="heatmap-legend">
+        <span>Less</span>
+        <div class="scale">
+          <span style="background: var(--panel-2)"></span>
+          <span style="background: rgba(var(--heat-base), 0.25)"></span>
+          <span style="background: rgba(var(--heat-base), 0.5)"></span>
+          <span style="background: rgba(var(--heat-base), 0.75)"></span>
+          <span style="background: rgba(var(--heat-base), 1.0)"></span>
+        </div>
+        <span>More</span>
+        <span style="margin-left: auto" class="h-sub">Click a day to see transactions</span>
+      </div>
+      <div class="day-detail" id="dayDetail"></div>
     </div>
-    <div class="card">
-      <h2>Daily Spend (Last 30 Days)</h2>
-      <canvas id="dailyChart"></canvas>
-    </div>
+  </section>
+
+  <!-- CATEGORY BARS + CUMULATIVE LINE -->
+  <div class="row-2">
+    <section class="card">
+      <h2>Categories — this vs last month</h2>
+      <div class="catbars" id="catBars"></div>
+    </section>
+    <section class="card">
+      <h2>Cumulative spend — this vs last month</h2>
+      <div class="chart-h"><canvas id="cumChart"></canvas></div>
+    </section>
   </div>
 
-  <div class="row">
-    <div class="card">
-      <h2>Top Merchants (This Month)</h2>
-      <ol class="merchants" id="topMerchants"></ol>
-    </div>
-    <div class="card">
-      <h2>Spend by Payment Method (This Month)</h2>
-      <canvas id="paymentChart"></canvas>
-    </div>
-  </div>
-
-  <div class="card">
-    <h2>Transactions</h2>
-    <div class="filter-row">
-      <input type="search" id="searchBox" placeholder="Search merchant, note, category, payment method...">
-      <select id="rangeFilter">
-        <option value="month">This Month</option>
-        <option value="last-month">Last Month</option>
-        <option value="week">This Week</option>
-        <option value="ytd">Year to Date</option>
-        <option value="all" selected>All Time</option>
-      </select>
-      <select id="catFilter">
-        <option value="">All Categories</option>
-      </select>
-    </div>
-    <div style="overflow-x:auto">
+  <!-- RECENT TRANSACTIONS -->
+  <section class="card">
+    <h2>Recent transactions <span class="h-sub" id="txSub"></span></h2>
+    <div class="tx-table-wrap">
       <table id="txTable">
         <thead>
-          <tr><th>Date</th><th>Merchant</th><th>Category</th><th>Pmt</th><th style="text-align:right">Amount</th><th>Note</th></tr>
+          <tr>
+            <th>Date</th>
+            <th>Merchant</th>
+            <th>Category</th>
+            <th>Pmt</th>
+            <th>Src</th>
+            <th style="text-align:right">Amount</th>
+            <th>Note</th>
+          </tr>
         </thead>
         <tbody></tbody>
       </table>
     </div>
-  </div>
+  </section>
+
+  <!-- MERCHANT FREQUENCY -->
+  <section class="card">
+    <h2>Top merchants this month <span class="h-sub">click a column to sort</span></h2>
+    <table id="merchTable">
+      <thead>
+        <tr>
+          <th data-sort="name" class="no-sort">Merchant</th>
+          <th data-sort="count" style="text-align:right">Count <span class="sort-arrow">↓</span></th>
+          <th data-sort="total" style="text-align:right">Total <span class="sort-arrow">↓</span></th>
+          <th data-sort="avg" style="text-align:right">Avg <span class="sort-arrow">↓</span></th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
 </main>
+</div>
+
+<div class="toast" id="toast"></div>
 
 <script>
-if (typeof ChartDataLabels !== 'undefined') Chart.register(ChartDataLabels);
-
+// ─── constants & state ────────────────────────────────────────────────
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 });
-const PALETTE = ['#5ea6ff', '#ff9e4f', '#6bd58a', '#c084fc', '#ff7a7a', '#ffd166', '#4ecdc4', '#a8b3c4'];
-
-function compactINR(v) {
-  if (v >= 100000) return '₹' + (v / 100000).toFixed(1) + 'L';
-  if (v >= 1000) return '₹' + (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'k';
-  return '₹' + Math.round(v);
-}
-
-function doughnutLabels() {
-  return {
-    color: '#fff',
-    font: { weight: '600', size: 11 },
-    textStrokeColor: 'rgba(0,0,0,0.45)',
-    textStrokeWidth: 3,
-    formatter: (v, ctx) => {
-      const total = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
-      // Hide labels for tiny slices to avoid overlap.
-      return total > 0 && (v / total) >= 0.04 ? compactINR(v) : '';
-    },
-  };
-}
+const PAYMENT_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'upi', label: 'UPI' },
+  { id: 'credit_card', label: 'Credit Card' },
+  { id: 'debit_card', label: 'Debit Card' },
+  { id: 'cash', label: 'Cash' },
+  { id: 'wallet', label: 'Wallet' },
+];
 
 let allEntries = [];
+let activeFilter = 'all';
+let selectedDayKey = null;     // 'YYYY-MM-DD'
+let merchantSort = 'total';
+let merchantSortDir = 'desc';
 let charts = {};
 
+// ─── utilities ────────────────────────────────────────────────────────
+function compactINR(v) {
+  if (v >= 100000) return '₹' + (v / 100000).toFixed(1) + 'L';
+  if (v >= 10000) return '₹' + Math.round(v / 1000) + 'k';
+  if (v >= 1000) return '₹' + (v / 1000).toFixed(1) + 'k';
+  return '₹' + Math.round(v);
+}
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function getCss(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+function startOfDay(d) { const x = new Date(d); x.setHours(0,0,0,0); return x; }
+function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+function endOfMonth(d) { return new Date(d.getFullYear(), d.getMonth() + 1, 1); }
+function daysInMonth(d) { return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate(); }
+function dateKey(d) {
+  const x = startOfDay(d);
+  return x.getFullYear() + '-' + String(x.getMonth()+1).padStart(2,'0') + '-' + String(x.getDate()).padStart(2,'0');
+}
+function fmtDate(d) {
+  return d.toLocaleDateString('en-IN', { day:'2-digit', month:'short' });
+}
+function fmtFullDate(d) {
+  return d.toLocaleDateString('en-IN', { weekday:'short', day:'2-digit', month:'short', year:'numeric' });
+}
+function fmtDateTime(d) {
+  return d.toLocaleDateString('en-IN', { day:'2-digit', month:'short' }) +
+    ' · ' + d.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit', hour12: true });
+}
+
+// ─── file load + cache ────────────────────────────────────────────────
 function showError(msg) {
   const box = document.getElementById('errors');
   box.style.display = 'block';
@@ -208,19 +394,15 @@ document.getElementById('fileInput').addEventListener('change', async (e) => {
   try {
     const file = e.target.files[0];
     if (!file) { showError('No file selected.'); return; }
-    document.getElementById('filename').textContent = `${file.name} (${file.size} bytes)`;
     let text;
-    if (file.text) {
-      text = await file.text();
-    } else {
-      text = await new Promise((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(r.result);
-        r.onerror = () => reject(r.error);
-        r.readAsText(file);
-      });
-    }
-    if (!text || text.length === 0) { showError(`File read but empty (${file.size} bytes).`); return; }
+    if (file.text) text = await file.text();
+    else text = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result);
+      r.onerror = () => rej(r.error);
+      r.readAsText(file);
+    });
+    if (!text || !text.length) { showError(`File read but empty (${file.size} bytes).`); return; }
     loadData(text);
   } catch (err) {
     showError(`Load failed: ${err.message || err}`);
@@ -231,282 +413,598 @@ function loadData(text) {
   const errors = [];
   const entries = [];
   text.split(/\r?\n/).forEach((line, i) => {
-    const trimmed = line.trim();
-    if (!trimmed) return;
+    const t = line.trim();
+    if (!t) return;
     try {
-      const obj = JSON.parse(trimmed);
-      if (typeof obj.amount === 'string') obj.amount = parseFloat(obj.amount);
-      obj._date = new Date(obj.ts);
-      entries.push(obj);
-    } catch (err) {
-      errors.push(`Line ${i + 1}: ${err.message}`);
-    }
+      const o = JSON.parse(t);
+      if (typeof o.amount === 'string') o.amount = parseFloat(o.amount);
+      o._date = new Date(o.ts);
+      o._dayKey = dateKey(o._date);
+      entries.push(o);
+    } catch (err) { errors.push(`Line ${i+1}`); }
   });
   entries.sort((a, b) => b._date - a._date);
   allEntries = entries;
 
-  if (entries.length > 0) {
-    try {
-      localStorage.setItem('expense-data', text);
-      localStorage.setItem('expense-data-ts', new Date().toISOString());
-      updateLastLoaded();
-    } catch (e) { /* quota exceeded — fall back to in-memory only */ }
-  }
-
-  const errBox = document.getElementById('errors');
   if (errors.length) {
-    errBox.style.display = 'block';
-    errBox.textContent = `${errors.length} line(s) skipped: ` + errors.slice(0, 3).join(' · ');
-  } else {
-    errBox.style.display = 'none';
+    const box = document.getElementById('errors');
+    box.style.display = 'block';
+    box.textContent = `${errors.length} line(s) skipped as invalid JSON`;
   }
-
-  if (entries.length === 0) {
-    document.getElementById('empty').textContent = 'No entries found in the file.';
+  if (!entries.length) {
+    document.getElementById('empty').textContent = 'File loaded but no valid entries.';
     return;
   }
+
+  // Persist cache
+  try {
+    localStorage.setItem('expense-data', text);
+    localStorage.setItem('expense-data-ts', new Date().toISOString());
+    updateLastLoaded();
+  } catch (e) { /* quota */ }
 
   document.getElementById('empty').style.display = 'none';
   document.getElementById('main').classList.add('loaded');
 
-  populateCategoryFilter();
-  renderStats();
-  renderCharts();
-  renderMerchants();
-  renderTable();
+  selectedDayKey = dateKey(new Date());  // default today
+  renderAll();
 }
-
-function startOfDay(d) { const x = new Date(d); x.setHours(0,0,0,0); return x; }
-function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
-function startOfWeek(d) {
-  const x = startOfDay(d);
-  const day = x.getDay() === 0 ? 6 : x.getDay() - 1; // week starts Monday
-  x.setDate(x.getDate() - day);
-  return x;
-}
-function startOfYear(d) { return new Date(d.getFullYear(), 0, 1); }
-function fmtDate(d) {
-  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-}
-function fmtDateTime(d) {
-  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) +
-    ' · ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-}
-
-function sumIn(start, end) {
-  return allEntries
-    .filter(e => e._date >= start && (!end || e._date < end))
-    .reduce((s, e) => s + (e.amount || 0), 0);
-}
-
-function renderStats() {
-  const now = new Date();
-  const today = startOfDay(now);
-  const thisWeek = startOfWeek(now);
-  const thisMonth = startOfMonth(now);
-  const lastMonth = new Date(thisMonth.getFullYear(), thisMonth.getMonth() - 1, 1);
-  const ytd = startOfYear(now);
-
-  const todayTotal = sumIn(today);
-  const weekTotal = sumIn(thisWeek);
-  const monthTotal = sumIn(thisMonth);
-  const lastMonthTotal = sumIn(lastMonth, thisMonth);
-  const ytdTotal = sumIn(ytd);
-
-  const monthDelta = lastMonthTotal > 0 ? ((monthTotal - lastMonthTotal) / lastMonthTotal) * 100 : 0;
-  const deltaClass = monthDelta > 0 ? 'up' : 'down';
-  const deltaSign = monthDelta > 0 ? '↑' : '↓';
-  const deltaStr = lastMonthTotal === 0
-    ? `vs last month: —`
-    : `${deltaSign} ${Math.abs(monthDelta).toFixed(0)}% vs last month`;
-
-  document.getElementById('stats').innerHTML = `
-    <div class="stat"><div class="label">Today</div><div class="value">${INR.format(todayTotal)}</div></div>
-    <div class="stat"><div class="label">This Week</div><div class="value">${INR.format(weekTotal)}</div></div>
-    <div class="stat">
-      <div class="label">This Month</div>
-      <div class="value">${INR.format(monthTotal)}</div>
-      <div class="delta ${deltaClass}">${deltaStr}</div>
-    </div>
-    <div class="stat"><div class="label">Last Month</div><div class="value">${INR.format(lastMonthTotal)}</div></div>
-    <div class="stat"><div class="label">Year to Date</div><div class="value">${INR.format(ytdTotal)}</div></div>
-  `;
-}
-
-function renderCharts() {
-  Object.values(charts).forEach(c => c?.destroy?.());
-  charts = {};
-
-  const now = new Date();
-  const thisMonth = startOfMonth(now);
-  const monthEntries = allEntries.filter(e => e._date >= thisMonth);
-
-  // Category breakdown
-  const byCat = {};
-  monthEntries.forEach(e => { byCat[e.category || 'Misc'] = (byCat[e.category || 'Misc'] || 0) + (e.amount || 0); });
-  const catLabels = Object.keys(byCat);
-  const catData = catLabels.map(k => byCat[k]);
-  charts.cat = new Chart(document.getElementById('categoryChart'), {
-    type: 'doughnut',
-    data: { labels: catLabels, datasets: [{ data: catData, backgroundColor: PALETTE, borderWidth: 0 }] },
-    options: {
-      plugins: {
-        legend: { position: 'right', labels: { color: getCss('--text') } },
-        datalabels: doughnutLabels(),
-      },
-      cutout: '60%',
-    },
-  });
-
-  // Daily bar chart, last 30 days
-  const days = [];
-  const totals = [];
-  for (let i = 29; i >= 0; i--) {
-    const d = startOfDay(new Date(now.getTime() - i * 86400000));
-    const next = new Date(d.getTime() + 86400000);
-    days.push(fmtDate(d));
-    totals.push(sumIn(d, next));
-  }
-  charts.daily = new Chart(document.getElementById('dailyChart'), {
-    type: 'bar',
-    data: { labels: days, datasets: [{ data: totals, backgroundColor: getCss('--accent'), borderRadius: 3 }] },
-    options: {
-      layout: { padding: { top: 20 } },
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: (ctx) => INR.format(ctx.parsed.y) } },
-        datalabels: {
-          anchor: 'end', align: 'end', offset: 2,
-          color: getCss('--text'),
-          font: { size: 9, weight: '500' },
-          formatter: (v) => v > 0 ? compactINR(v) : '',
-        },
-      },
-      scales: {
-        x: { ticks: { color: getCss('--muted'), maxRotation: 0, autoSkip: true, maxTicksLimit: 8 }, grid: { display: false } },
-        y: { ticks: { color: getCss('--muted'), callback: (v) => '₹' + v }, grid: { color: getCss('--border') } }
-      }
-    }
-  });
-
-  // Payment method breakdown
-  const byPmt = {};
-  monthEntries.forEach(e => { byPmt[e.payment_method || 'unknown'] = (byPmt[e.payment_method || 'unknown'] || 0) + (e.amount || 0); });
-  const pmtLabels = Object.keys(byPmt);
-  const pmtData = pmtLabels.map(k => byPmt[k]);
-  charts.pmt = new Chart(document.getElementById('paymentChart'), {
-    type: 'doughnut',
-    data: { labels: pmtLabels, datasets: [{ data: pmtData, backgroundColor: PALETTE, borderWidth: 0 }] },
-    options: {
-      plugins: {
-        legend: { position: 'right', labels: { color: getCss('--text') } },
-        datalabels: doughnutLabels(),
-      },
-      cutout: '60%',
-    },
-  });
-}
-
-function renderMerchants() {
-  const thisMonth = startOfMonth(new Date());
-  const map = {};
-  allEntries.filter(e => e._date >= thisMonth).forEach(e => {
-    const k = (e.merchant || 'unknown').toLowerCase();
-    if (!map[k]) map[k] = { name: e.merchant, total: 0, count: 0 };
-    map[k].total += e.amount || 0;
-    map[k].count += 1;
-  });
-  const top = Object.values(map).sort((a, b) => b.total - a.total).slice(0, 10);
-  document.getElementById('topMerchants').innerHTML = top.length === 0
-    ? '<li><span class="name">No entries this month</span></li>'
-    : top.map(m => `
-      <li>
-        <span class="name">${escapeHtml(m.name)} <span class="count">× ${m.count}</span></span>
-        <span>${INR.format(m.total)}</span>
-      </li>
-    `).join('');
-}
-
-function populateCategoryFilter() {
-  const cats = [...new Set(allEntries.map(e => e.category).filter(Boolean))].sort();
-  const sel = document.getElementById('catFilter');
-  sel.innerHTML = '<option value="">All Categories</option>' + cats.map(c => `<option>${escapeHtml(c)}</option>`).join('');
-}
-
-function renderTable() {
-  const q = document.getElementById('searchBox').value.trim().toLowerCase();
-  const range = document.getElementById('rangeFilter').value;
-  const cat = document.getElementById('catFilter').value;
-
-  const now = new Date();
-  let start, end;
-  if (range === 'month') start = startOfMonth(now);
-  else if (range === 'last-month') { start = new Date(now.getFullYear(), now.getMonth() - 1, 1); end = startOfMonth(now); }
-  else if (range === 'week') start = startOfWeek(now);
-  else if (range === 'ytd') start = startOfYear(now);
-
-  let rows = allEntries.filter(e => {
-    if (start && e._date < start) return false;
-    if (end && e._date >= end) return false;
-    if (cat && e.category !== cat) return false;
-    if (q) {
-      const blob = `${e.merchant || ''} ${e.note || ''} ${e.category || ''} ${e.payment_method || ''}`.toLowerCase();
-      if (!blob.includes(q)) return false;
-    }
-    return true;
-  });
-
-  const total = rows.reduce((s, e) => s + (e.amount || 0), 0);
-
-  const body = document.querySelector('#txTable tbody');
-  body.innerHTML = rows.length === 0
-    ? `<tr><td colspan="6" class="muted" style="text-align:center;padding:24px">No transactions match.</td></tr>`
-    : rows.map(e => `
-      <tr>
-        <td class="muted">${fmtDateTime(e._date)}</td>
-        <td>${escapeHtml(e.merchant || '')}</td>
-        <td><span class="pill">${escapeHtml(e.category || '')}</span></td>
-        <td class="muted">${escapeHtml(e.payment_method || '')}</td>
-        <td class="amount">${INR.format(e.amount || 0)}</td>
-        <td class="muted">${escapeHtml(e.note || '')}</td>
-      </tr>
-    `).join('') + `
-      <tr><td colspan="4" style="text-align:right;font-weight:600">Filtered total</td>
-          <td class="amount" style="font-weight:600">${INR.format(total)}</td><td></td></tr>
-    `;
-}
-
-document.getElementById('searchBox').addEventListener('input', renderTable);
-document.getElementById('rangeFilter').addEventListener('change', renderTable);
-document.getElementById('catFilter').addEventListener('change', renderTable);
-
-function escapeHtml(s) {
-  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-function getCss(v) { return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
 
 function updateLastLoaded() {
   const ts = localStorage.getItem('expense-data-ts');
   if (!ts) return;
-  const date = new Date(ts);
-  const mins = Math.floor((Date.now() - date.getTime()) / 60000);
-  let label;
-  if (mins < 1) label = 'just now';
-  else if (mins < 60) label = `${mins}m ago`;
-  else if (mins < 1440) label = `${Math.floor(mins / 60)}h ago`;
-  else label = `${Math.floor(mins / 1440)}d ago`;
-  document.getElementById('filename').textContent = `Loaded ${label}`;
+  const d = new Date(ts);
+  const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+  let lbl;
+  if (mins < 1) lbl = 'just now';
+  else if (mins < 60) lbl = mins + 'm ago';
+  else if (mins < 1440) lbl = Math.floor(mins/60) + 'h ago';
+  else lbl = Math.floor(mins/1440) + 'd ago';
+  document.getElementById('filename').textContent = 'Loaded ' + lbl;
   document.getElementById('pickerLabel').textContent = 'Refresh';
 }
 
-// Auto-load from localStorage on page open
-(function initFromCache() {
+// ─── filter ───────────────────────────────────────────────────────────
+function getFilteredEntries() {
+  if (activeFilter === 'all') return allEntries;
+  return allEntries.filter(e => e.payment_method === activeFilter);
+}
+
+function renderChips() {
+  const box = document.getElementById('chips');
+  box.innerHTML = PAYMENT_FILTERS.map(f =>
+    `<div class="chip ${f.id === activeFilter ? 'active' : ''}" data-id="${f.id}">${escapeHtml(f.label)}</div>`
+  ).join('');
+  box.querySelectorAll('.chip').forEach(el => {
+    el.addEventListener('click', () => {
+      activeFilter = el.dataset.id;
+      renderAll();
+    });
+  });
+}
+
+// ─── render orchestration ─────────────────────────────────────────────
+function renderAll() {
+  const filtered = getFilteredEntries();
+  renderChips();
+  renderStatus(filtered);
+  renderAnomalies(filtered);
+  renderHeatmap(filtered);
+  renderCategoryBars(filtered);
+  renderCumulative(filtered);
+  renderTransactionsTable(filtered);
+  renderMerchants(filtered);
+}
+
+// ─── STATUS strip ─────────────────────────────────────────────────────
+function renderStatus(entries) {
+  const now = new Date();
+  const day = now.getDate();
+  const monthStart = startOfMonth(now);
+  const tomorrow = startOfDay(new Date(now.getTime() + 86400000));
+
+  // This month so far
+  const thisMonthSoFar = entries
+    .filter(e => e._date >= monthStart && e._date < tomorrow)
+    .reduce((s, e) => s + (e.amount || 0), 0);
+
+  // Last month, same day-of-month period
+  const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonthDays = daysInMonth(lastMonth);
+  const cappedDay = Math.min(day, lastMonthDays);
+  const lastMonthSamePeriodEnd = new Date(lastMonth.getFullYear(), lastMonth.getMonth(), cappedDay + 1);
+  const lastMonthSamePeriod = entries
+    .filter(e => e._date >= lastMonth && e._date < lastMonthSamePeriodEnd)
+    .reduce((s, e) => s + (e.amount || 0), 0);
+
+  let cmpStr, cmpClass = '';
+  if (lastMonthSamePeriod === 0) {
+    cmpStr = 'no data for last month';
+  } else {
+    const pct = ((thisMonthSoFar - lastMonthSamePeriod) / lastMonthSamePeriod) * 100;
+    if (Math.abs(pct) < 1) cmpStr = 'same as last month at this point';
+    else {
+      cmpStr = `${Math.abs(pct).toFixed(0)}% ${pct > 0 ? 'more' : 'less'} than last month at this point`;
+      cmpClass = pct > 0 ? 'up' : 'down';
+    }
+  }
+
+  // Daily burn
+  const dailyBurn = thisMonthSoFar / day;
+
+  // Sparkline: last 14 days
+  const sparkData = [];
+  for (let i = 13; i >= 0; i--) {
+    const dayStart = startOfDay(new Date(now.getTime() - i * 86400000));
+    const dayEnd = new Date(dayStart.getTime() + 86400000);
+    sparkData.push(entries.filter(e => e._date >= dayStart && e._date < dayEnd).reduce((s, e) => s + (e.amount || 0), 0));
+  }
+  const sparkSvg = renderSparkline(sparkData, 80, 28);
+
+  // Projection
+  const dim = daysInMonth(now);
+  const projected = (thisMonthSoFar / day) * dim;
+
+  // Top category this month
+  const cats = {};
+  entries.filter(e => e._date >= monthStart && e._date < tomorrow).forEach(e => {
+    cats[e.category] = (cats[e.category] || 0) + (e.amount || 0);
+  });
+  const topCat = Object.entries(cats).sort((a, b) => b[1] - a[1])[0];
+  const topCatPct = topCat && thisMonthSoFar > 0 ? Math.round((topCat[1] / thisMonthSoFar) * 100) : 0;
+
+  document.getElementById('status').innerHTML = `
+    <div class="tile">
+      <div class="label">Spent this month</div>
+      <div class="value">${INR.format(thisMonthSoFar)}</div>
+      <div class="sub ${cmpClass}">${cmpStr}</div>
+    </div>
+    <div class="tile">
+      <div class="label">Daily burn rate</div>
+      <div class="spark">${sparkSvg}</div>
+      <div class="value">${INR.format(dailyBurn)}<span style="font-size:14px;color:var(--muted);font-weight:500">/day</span></div>
+      <div class="sub">avg over ${day} day${day===1?'':'s'} this month</div>
+    </div>
+    <div class="tile">
+      <div class="label">Projected month-end</div>
+      <div class="value">${INR.format(projected)}</div>
+      <div class="sub">at current pace · ${dim - day} day${dim-day===1?'':'s'} left</div>
+    </div>
+    <div class="tile">
+      <div class="label">Top category</div>
+      ${topCat ? `
+        <div class="topcat-name">${escapeHtml(topCat[0])}</div>
+        <div class="topcat-amount">${INR.format(topCat[1])}</div>
+        <div class="sub">${topCatPct}% of this month</div>
+      ` : '<div class="value" style="font-size:18px;color:var(--muted)">—</div>'}
+    </div>
+  `;
+}
+
+function renderSparkline(data, w, h) {
+  if (!data.length) return '';
+  const max = Math.max(...data, 1);
+  const stepX = w / Math.max(data.length - 1, 1);
+  const points = data.map((v, i) => `${i * stepX},${h - (v / max) * h}`).join(' ');
+  const fillPoints = `0,${h} ${points} ${(data.length - 1) * stepX},${h}`;
+  return `
+    <svg width="${w}" height="${h}" style="display:block">
+      <polygon points="${fillPoints}" fill="${getCss('--accent')}" opacity="0.2"/>
+      <polyline points="${points}" fill="none" stroke="${getCss('--accent')}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>
+  `;
+}
+
+// ─── ANOMALIES ────────────────────────────────────────────────────────
+function renderAnomalies(entries) {
+  const out = [];
+  const now = new Date();
+  const today = startOfDay(now);
+  const ago60 = new Date(today.getTime() - 60 * 86400000);
+  const ago7 = new Date(today.getTime() - 7 * 86400000);
+  const monthStart = startOfMonth(now);
+
+  // 1. New merchants in last 7 days (not seen in prior 60 days)
+  const recentMerchants = new Set();
+  const olderMerchants = new Set();
+  entries.forEach(e => {
+    const m = (e.merchant || '').toLowerCase().trim();
+    if (!m) return;
+    if (e._date >= ago7) recentMerchants.add(m);
+    else if (e._date >= ago60) olderMerchants.add(m);
+    else if (e._date < ago60) olderMerchants.add(m);
+  });
+  const newMerchants = [...recentMerchants].filter(m => !olderMerchants.has(m));
+  newMerchants.slice(0, 3).forEach(m => {
+    const example = entries.find(e => (e.merchant || '').toLowerCase().trim() === m);
+    if (example) {
+      out.push({
+        kind: 'good',
+        title: `First time at ${example.merchant}`,
+        detail: `${INR.format(example.amount || 0)} · ${example.category} · ${fmtDate(example._date)}`
+      });
+    }
+  });
+
+  // 2. Today's category spend > 2× usual (median per day, last 30 days)
+  const categoriesToday = {};
+  entries.filter(e => e._date >= today).forEach(e => {
+    categoriesToday[e.category] = (categoriesToday[e.category] || 0) + (e.amount || 0);
+  });
+  const ago30 = new Date(today.getTime() - 30 * 86400000);
+  Object.entries(categoriesToday).forEach(([cat, amt]) => {
+    const dailyTotals = {};
+    entries.filter(e => e.category === cat && e._date >= ago30 && e._date < today).forEach(e => {
+      dailyTotals[e._dayKey] = (dailyTotals[e._dayKey] || 0) + (e.amount || 0);
+    });
+    const vals = Object.values(dailyTotals).filter(v => v > 0);
+    if (vals.length >= 5) {
+      const sorted = vals.slice().sort((a, b) => a - b);
+      const median = sorted[Math.floor(sorted.length / 2)];
+      if (amt > 2 * median && median > 0) {
+        out.push({
+          kind: 'bad',
+          title: `${INR.format(amt)} on ${cat} today`,
+          detail: `${(amt / median).toFixed(1)}× your usual ${INR.format(median)} median day`
+        });
+      }
+    }
+  });
+
+  // 3. New subscriptions this month
+  const subsBefore = new Set();
+  const subsThisMonth = new Set();
+  entries.forEach(e => {
+    if (e.category !== 'Subscriptions') return;
+    const m = (e.merchant || '').toLowerCase().trim();
+    if (!m) return;
+    if (e._date < monthStart) subsBefore.add(m);
+    else subsThisMonth.add(m);
+  });
+  [...subsThisMonth].filter(m => !subsBefore.has(m)).slice(0, 2).forEach(m => {
+    const example = entries.find(e => e.category === 'Subscriptions' && (e.merchant || '').toLowerCase().trim() === m);
+    if (example) {
+      out.push({
+        kind: 'warn',
+        title: `New subscription: ${example.merchant}`,
+        detail: `${INR.format(example.amount || 0)} · started ${fmtDate(example._date)}`
+      });
+    }
+  });
+
+  const box = document.getElementById('anomalies');
+  if (!out.length) { box.innerHTML = ''; return; }
+  box.innerHTML = out.map(a => `
+    <div class="anom ${a.kind === 'bad' ? 'bad' : a.kind === 'good' ? 'good' : ''}">
+      <div class="anom-icon">${a.kind === 'bad' ? '!' : a.kind === 'good' ? '+' : '*'}</div>
+      <div class="anom-body">
+        <div class="anom-title">${escapeHtml(a.title)}</div>
+        <div class="anom-detail">${escapeHtml(a.detail)}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+// ─── HEATMAP ──────────────────────────────────────────────────────────
+function renderHeatmap(entries) {
+  const now = new Date();
+  const today = startOfDay(now);
+  // 90 days ago. We want 13 weeks * 7 days = 91 cells, ending at today's week's Saturday.
+  // For Monday-start weeks, find the Monday of the week 12 weeks back.
+  const startDay = new Date(today.getTime() - 90 * 86400000);
+  // Snap to Monday of that week
+  const dow = startDay.getDay() === 0 ? 6 : startDay.getDay() - 1;
+  startDay.setDate(startDay.getDate() - dow);
+
+  // Sum per dayKey
+  const totals = {};
+  entries.forEach(e => {
+    if (e._date >= startDay) totals[e._dayKey] = (totals[e._dayKey] || 0) + (e.amount || 0);
+  });
+  const max = Math.max(...Object.values(totals), 1);
+
+  const cells = [];
+  // Build cells from startDay through today's week's Sunday
+  // Calculate end: this week's Sunday
+  const endDay = new Date(today);
+  const endDow = endDay.getDay() === 0 ? 6 : endDay.getDay() - 1;
+  endDay.setDate(endDay.getDate() + (6 - endDow));
+
+  for (let d = new Date(startDay); d <= endDay; d.setDate(d.getDate() + 1)) {
+    const k = dateKey(d);
+    const amt = totals[k] || 0;
+    const future = d > today;
+    const intensity = future ? 0 : (amt / max);
+    const bg = amt === 0 ? 'var(--panel-2)' : `rgba(var(--heat-base), ${(0.18 + intensity * 0.82).toFixed(2)})`;
+    cells.push({ key: k, amt, future, bg, isSelected: k === selectedDayKey });
+  }
+
+  document.getElementById('heatmap').innerHTML = cells.map(c => `
+    <div class="heat-cell ${c.future ? 'future' : ''} ${c.isSelected ? 'selected' : ''}"
+         style="background:${c.bg}"
+         title="${c.key} · ${INR.format(c.amt)}"
+         data-key="${c.key}"></div>
+  `).join('');
+
+  document.querySelectorAll('.heat-cell').forEach(el => {
+    if (el.classList.contains('future')) return;
+    el.addEventListener('click', () => {
+      selectedDayKey = el.dataset.key;
+      renderHeatmap(entries);
+      renderDayDetail(entries);
+    });
+  });
+
+  const totalIn90 = Object.values(totals).reduce((s, v) => s + v, 0);
+  document.getElementById('heatmapSub').textContent = `${INR.format(totalIn90)} total`;
+
+  renderDayDetail(entries);
+}
+
+function renderDayDetail(entries) {
+  const box = document.getElementById('dayDetail');
+  if (!selectedDayKey) { box.innerHTML = ''; return; }
+  const dayEntries = entries.filter(e => e._dayKey === selectedDayKey).sort((a, b) => a._date - b._date);
+  const total = dayEntries.reduce((s, e) => s + (e.amount || 0), 0);
+  const dateObj = new Date(selectedDayKey + 'T00:00:00');
+  box.innerHTML = `
+    <div class="day-header">
+      <span>${fmtFullDate(dateObj)}</span>
+      <span class="day-total">${dayEntries.length} txn · ${INR.format(total)}</span>
+    </div>
+    ${dayEntries.length === 0
+      ? '<div class="empty">No transactions on this day.</div>'
+      : '<ul>' + dayEntries.map(e => `
+          <li>
+            <span class="merch">${escapeHtml(e.merchant || '')}</span>
+            <span class="badge ${escapeHtml(e.payment_method || '')}">${escapeHtml(e.payment_method || '')}</span>
+            <span class="pill">${escapeHtml(e.category || '')}</span>
+            <span class="day-amt">${INR.format(e.amount || 0)}</span>
+          </li>
+        `).join('') + '</ul>'
+    }
+  `;
+}
+
+// ─── CATEGORY BARS (this vs last month) ───────────────────────────────
+function renderCategoryBars(entries) {
+  const now = new Date();
+  const monthStart = startOfMonth(now);
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+  const thisMonthCats = {};
+  const lastMonthCats = {};
+  entries.forEach(e => {
+    if (e._date >= monthStart) thisMonthCats[e.category] = (thisMonthCats[e.category] || 0) + (e.amount || 0);
+    else if (e._date >= lastMonthStart) lastMonthCats[e.category] = (lastMonthCats[e.category] || 0) + (e.amount || 0);
+  });
+
+  const allCats = new Set([...Object.keys(thisMonthCats), ...Object.keys(lastMonthCats)]);
+  const rows = [...allCats].map(cat => ({
+    cat,
+    now: thisMonthCats[cat] || 0,
+    prev: lastMonthCats[cat] || 0,
+  })).sort((a, b) => Math.max(b.now, b.prev) - Math.max(a.now, a.prev));
+
+  const max = Math.max(...rows.map(r => Math.max(r.now, r.prev)), 1);
+
+  document.getElementById('catBars').innerHTML = rows.length === 0
+    ? '<div style="color:var(--muted);font-size:13px;padding:8px 0">No data this month yet.</div>'
+    : rows.map(r => {
+        let delta = '', deltaCls = '';
+        if (r.prev > 0) {
+          const pct = ((r.now - r.prev) / r.prev) * 100;
+          if (Math.abs(pct) >= 1) {
+            delta = (pct > 0 ? '↑' : '↓') + Math.abs(pct).toFixed(0) + '%';
+            deltaCls = pct > 0 ? 'up' : 'down';
+          } else delta = '~';
+        } else if (r.now > 0) {
+          delta = 'new';
+        }
+        const wNow = (r.now / max) * 100;
+        const wPrev = (r.prev / max) * 100;
+        return `
+          <div class="catbar">
+            <div class="name" title="${escapeHtml(r.cat)}">${escapeHtml(r.cat)}</div>
+            <div class="bars">
+              <div class="bar"><div class="fill" style="width:${wNow}%"></div><div class="lbl">${r.now > 0 ? compactINR(r.now) : ''}</div></div>
+              <div class="bar last"><div class="fill" style="width:${wPrev}%"></div><div class="lbl" style="color:var(--muted)">${r.prev > 0 ? compactINR(r.prev) : ''}</div></div>
+            </div>
+            <div class="delta ${deltaCls}">${delta}</div>
+          </div>
+        `;
+      }).join('');
+}
+
+// ─── CUMULATIVE LINE ──────────────────────────────────────────────────
+function renderCumulative(entries) {
+  if (charts.cum) charts.cum.destroy();
+  const now = new Date();
+  const today = startOfDay(now);
+  const dim = daysInMonth(now);
+  const monthStart = startOfMonth(now);
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonthEnd = monthStart;
+  const lastDim = daysInMonth(lastMonthStart);
+
+  const thisDaily = new Array(dim + 1).fill(0);
+  const lastDaily = new Array(lastDim + 1).fill(0);
+  entries.forEach(e => {
+    if (e._date >= monthStart && e._date < endOfMonth(now)) {
+      const d = e._date.getDate();
+      thisDaily[d] += (e.amount || 0);
+    } else if (e._date >= lastMonthStart && e._date < lastMonthEnd) {
+      const d = e._date.getDate();
+      lastDaily[d] += (e.amount || 0);
+    }
+  });
+  // Cumulate
+  const thisCum = [];
+  const lastCum = [];
+  let acc = 0;
+  for (let i = 1; i <= dim; i++) {
+    if (i <= today.getDate()) { acc += thisDaily[i]; thisCum.push(acc); }
+    else thisCum.push(null);
+  }
+  acc = 0;
+  for (let i = 1; i <= Math.max(dim, lastDim); i++) {
+    if (i <= lastDim) { acc += lastDaily[i]; lastCum.push(acc); }
+    else lastCum.push(null);
+  }
+  const labels = Array.from({ length: Math.max(dim, lastDim) }, (_, i) => String(i + 1));
+
+  const accent = getCss('--accent');
+  const muted = getCss('--muted');
+  const border = getCss('--border');
+  const text = getCss('--text');
+
+  charts.cum = new Chart(document.getElementById('cumChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'This month',
+          data: thisCum,
+          borderColor: accent,
+          backgroundColor: accent + '22',
+          fill: true,
+          tension: 0.2,
+          spanGaps: false,
+          pointRadius: 0,
+          pointHoverRadius: 3,
+          borderWidth: 2,
+        },
+        {
+          label: 'Last month',
+          data: lastCum,
+          borderColor: muted,
+          borderDash: [4, 4],
+          fill: false,
+          tension: 0.2,
+          pointRadius: 0,
+          pointHoverRadius: 3,
+          borderWidth: 1.5,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'top', labels: { color: text, boxWidth: 12, boxHeight: 2 } },
+        tooltip: { callbacks: { label: (ctx) => ctx.dataset.label + ': ' + (ctx.parsed.y == null ? '—' : INR.format(ctx.parsed.y)) } },
+      },
+      scales: {
+        x: { ticks: { color: muted, maxTicksLimit: 10 }, grid: { display: false } },
+        y: { ticks: { color: muted, callback: (v) => compactINR(v) }, grid: { color: border } },
+      },
+    },
+  });
+}
+
+// ─── TRANSACTIONS TABLE ───────────────────────────────────────────────
+function renderTransactionsTable(entries) {
+  const recent = entries.slice(0, 50);
+  const tbody = document.querySelector('#txTable tbody');
+  if (!recent.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:24px">No transactions.</td></tr>';
+    document.getElementById('txSub').textContent = '';
+    return;
+  }
+  document.getElementById('txSub').textContent = `showing latest ${recent.length} of ${entries.length}`;
+  tbody.innerHTML = recent.map((e, i) => `
+    <tr class="tx-row" data-idx="${i}">
+      <td class="muted">${escapeHtml(fmtDateTime(e._date))}</td>
+      <td>${escapeHtml(e.merchant || '')}</td>
+      <td><span class="pill">${escapeHtml(e.category || '')}</span></td>
+      <td><span class="badge ${escapeHtml(e.payment_method || '')}">${escapeHtml((e.payment_method || '').replace('_card',''))}</span></td>
+      <td><span class="badge">${escapeHtml(e.source || '')}</span></td>
+      <td class="amount">${INR.format(e.amount || 0)}</td>
+      <td class="muted">${escapeHtml(e.note || '')}</td>
+    </tr>
+  `).join('');
+
+  // Click row to expand raw_text
+  tbody.querySelectorAll('.tx-row').forEach((row) => {
+    row.addEventListener('click', () => {
+      const idx = +row.dataset.idx;
+      const next = row.nextElementSibling;
+      if (next && next.classList.contains('raw-row')) {
+        next.remove();
+        return;
+      }
+      const e = recent[idx];
+      const raw = document.createElement('tr');
+      raw.className = 'raw-row';
+      raw.innerHTML = `<td colspan="7"><strong>raw:</strong> ${escapeHtml(e.raw_text || '(empty)')}</td>`;
+      row.after(raw);
+    });
+  });
+}
+
+// ─── MERCHANT FREQUENCY ───────────────────────────────────────────────
+function renderMerchants(entries) {
+  const now = new Date();
+  const monthStart = startOfMonth(now);
+  const monthEntries = entries.filter(e => e._date >= monthStart);
+
+  const map = {};
+  monthEntries.forEach(e => {
+    const k = (e.merchant || '').toLowerCase().trim();
+    if (!k) return;
+    if (!map[k]) map[k] = { name: e.merchant, count: 0, total: 0 };
+    map[k].count += 1;
+    map[k].total += e.amount || 0;
+  });
+  let rows = Object.values(map).map(r => ({ ...r, avg: r.count ? r.total / r.count : 0 }));
+
+  const dir = merchantSortDir === 'desc' ? -1 : 1;
+  rows.sort((a, b) => {
+    const va = a[merchantSort], vb = b[merchantSort];
+    if (typeof va === 'string') return dir * va.localeCompare(vb);
+    return dir * (va - vb);
+  });
+  rows = rows.slice(0, 15);
+
+  // header arrows
+  document.querySelectorAll('#merchTable th').forEach(th => {
+    th.classList.toggle('sorted', th.dataset.sort === merchantSort);
+    const a = th.querySelector('.sort-arrow');
+    if (a) a.textContent = th.dataset.sort === merchantSort ? (merchantSortDir === 'desc' ? '↓' : '↑') : '↓';
+  });
+
+  const tbody = document.querySelector('#merchTable tbody');
+  tbody.innerHTML = rows.length === 0
+    ? '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:24px">No transactions this month.</td></tr>'
+    : rows.map(r => `
+        <tr>
+          <td>${escapeHtml(r.name)}</td>
+          <td class="amount">${r.count}</td>
+          <td class="amount">${INR.format(r.total)}</td>
+          <td class="amount">${INR.format(r.avg)}</td>
+        </tr>
+      `).join('');
+}
+
+// Sort handlers
+document.querySelectorAll('#merchTable th[data-sort]').forEach(th => {
+  if (th.classList.contains('no-sort')) return;
+  th.addEventListener('click', () => {
+    const col = th.dataset.sort;
+    if (merchantSort === col) merchantSortDir = merchantSortDir === 'desc' ? 'asc' : 'desc';
+    else { merchantSort = col; merchantSortDir = 'desc'; }
+    renderMerchants(getFilteredEntries());
+  });
+});
+
+// ─── INIT ─────────────────────────────────────────────────────────────
+(function init() {
   try {
     const cached = localStorage.getItem('expense-data');
-    if (cached && cached.length > 0) {
-      loadData(cached);
-    }
-  } catch (e) { /* cache unavailable — user will pick manually */ }
+    if (cached && cached.length) loadData(cached);
+  } catch (e) {}
 })();
 </script>
 
