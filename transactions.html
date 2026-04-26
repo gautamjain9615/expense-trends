@@ -877,7 +877,14 @@ function downloadModified() {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 
-  toast('Downloaded expenses.txt — replace your iCloud file with this version', 'good');
+  // Clear pending edits — the downloaded file already has them baked in.
+  // Without this, re-loading the (now updated) file would re-apply edits, double-applying.
+  edits.clear();
+  persistEdits();
+  expandedIdx = null;
+  render();
+
+  toast('Downloaded expenses.txt — replace your iCloud file with this version. Pending edits cleared.', 'good');
 }
 
 function exportCsv() {
